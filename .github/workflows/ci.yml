@@ -120,13 +120,14 @@ jobs:
       - name: Start API server
         env:
           ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: 'http://localhost:5000'
           USE_INMEMORY_COSMOS: 'true'
           POSTGRES_CONNECTION_STRING: 'Host=localhost;Database=alpacamock;Username=postgres;Password=postgres'
           ApiKeys__0__Key: 'test-api-key'
           ApiKeys__0__Secret: 'test-api-secret'
           ApiKeys__0__Name: 'Test User'
         run: |
-          dotnet run --project src/AlpacaMock.Api --configuration Release &
+          dotnet run --project src/AlpacaMock.Api --configuration Release --no-launch-profile &
 
           # Wait for API to be ready
           echo "Waiting for API to start..."
