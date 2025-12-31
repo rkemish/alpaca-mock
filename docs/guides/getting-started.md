@@ -10,9 +10,34 @@ This guide walks you through setting up AlpacaMock locally and running your firs
 
 ---
 
-## Quick Start with Docker Compose
+## Automated Setup (Recommended)
 
-The fastest way to get started is using Docker Compose, which sets up:
+The fastest way to get started is using the setup script, which starts all services and loads tech stock data:
+
+```bash
+git clone https://github.com/rkemish/alpaca-mock.git
+cd alpaca-mock
+
+# Configure your Polygon API key
+cp .env.example .env
+# Edit .env and add your POLYGON_API_KEY
+
+# Run the setup script
+./scripts/setup-local.sh
+```
+
+This script will:
+1. Start Docker Compose (PostgreSQL, Cosmos DB emulator, API)
+2. Wait for all services to be healthy
+3. Load 2024 minute bar data for FAANG+ stocks (AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA)
+
+**Note:** Loading a full year of data takes 30-60 minutes. For faster setup, use the manual method below with a smaller date range.
+
+---
+
+## Manual Setup with Docker Compose
+
+If you prefer more control, you can set up manually. Docker Compose provides:
 - **PostgreSQL + TimescaleDB** - Market data storage (persisted)
 - **Azure Cosmos DB Emulator** - Session storage (persisted, supports Apple Silicon M1/M2/M3)
 - **AlpacaMock API** - The backtesting API
@@ -93,6 +118,21 @@ docker compose -f deploy/docker-compose.yml down -v
 ---
 
 ## Loading Market Data
+
+### Load Tech Stocks (Script)
+
+Use the helper script to load multiple symbols at once:
+
+```bash
+# Load all FAANG+ stocks for 2024 (requires .env with POLYGON_API_KEY)
+./scripts/load-tech-stocks.sh
+
+# Load specific symbols only
+./scripts/load-tech-stocks.sh -s AAPL -s MSFT
+
+# Load a shorter date range (faster)
+./scripts/load-tech-stocks.sh --from 2024-10-01 --to 2024-12-31
+```
 
 ### Load Symbols Catalog
 

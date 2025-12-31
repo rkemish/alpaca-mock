@@ -43,27 +43,29 @@ AlpacaMock implements Alpaca trading rules for realistic backtesting:
 ## Quick Start
 
 ```bash
-# 1. Clone and start with Docker Compose (includes Cosmos DB emulator for Apple Silicon)
+# 1. Clone the repository
 git clone https://github.com/rkemish/alpaca-mock.git
 cd alpaca-mock
-docker compose -f deploy/docker-compose.yml up -d
 
-# 2. Load historical data from Polygon
-dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \
-  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
-  -k "YOUR_POLYGON_KEY" -s AAPL --from 2023-01-01 --to 2023-12-31 -r minute
+# 2. Configure your Polygon API key
+cp .env.example .env
+# Edit .env and add your POLYGON_API_KEY
 
-# 3. Create a backtest session and trade!
+# 3. Run the setup script (starts services + loads FAANG+ stocks for 2024)
+./scripts/setup-local.sh
+
+# 4. Create a backtest session and trade!
 curl -X POST http://localhost:5050/v1/sessions \
   -H "Authorization: Basic dGVzdC1hcGkta2V5OnRlc3QtYXBpLXNlY3JldA==" \
   -H "Content-Type: application/json" \
-  -d '{"startTime": "2023-01-03T09:30:00Z", "endTime": "2023-12-31T16:00:00Z"}'
+  -d '{"startTime": "2024-01-03T09:30:00Z", "endTime": "2024-12-31T16:00:00Z"}'
 ```
 
-Docker Compose provides:
+The setup script provides:
 - **PostgreSQL + TimescaleDB** - Market data (persisted)
 - **Azure Cosmos DB Emulator** - Session storage (persisted, supports Apple Silicon M1/M2/M3)
 - **AlpacaMock API** - Available at `http://localhost:5050`
+- **FAANG+ Stock Data** - AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA (full year 2024)
 
 ## Documentation
 

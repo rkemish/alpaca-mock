@@ -29,8 +29,15 @@ dotnet run --project src/AlpacaMock.DataIngestion -- load-symbols -c "..." -k "P
 dotnet run --project src/AlpacaMock.DataIngestion -- load-bars -c "..." -k "..." -s AAPL --from 2023-01-01 --to 2024-01-01 -r minute
 dotnet run --project src/AlpacaMock.DataIngestion -- stats -c "..."
 
-# Local development with Docker (includes Cosmos DB emulator for Apple Silicon)
+# Local development setup (Docker + load FAANG+ stocks)
+cp .env.example .env  # Add your POLYGON_API_KEY
+./scripts/setup-local.sh
+
+# Or start Docker manually
 docker compose -f deploy/docker-compose.yml up -d
+
+# Load additional stocks
+./scripts/load-tech-stocks.sh -s AAPL -s MSFT
 
 # API runs on http://localhost:5050
 # Postman functional tests
