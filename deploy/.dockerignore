@@ -1,0 +1,56 @@
+# Build artifacts
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# IDE and editor files
+.idea/
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+**/tests/
+**/*.Tests/
+**/TestResults/
+coverage/
+
+# CI/CD
+.github/
+.azure/
+
+# Local development
+*.local.json
+appsettings.Development.json
+.env
+*.pfx
+*.key
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Deployment files (not needed in container)
+deploy/
+*.bicep
+*.yml
+*.yaml
+
+# Misc
+*.log
+*.tmp
+Thumbs.db

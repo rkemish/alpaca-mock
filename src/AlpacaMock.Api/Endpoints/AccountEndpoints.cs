@@ -1,7 +1,6 @@
 using AlpacaMock.Api.Middleware;
 using AlpacaMock.Domain.Accounts;
-using AlpacaMock.Infrastructure.Cosmos;
-using Microsoft.Azure.Cosmos;
+using AlpacaMock.Infrastructure;
 
 namespace AlpacaMock.Api.Endpoints;
 
@@ -21,7 +20,7 @@ public static class AccountEndpoints
 
     private static async Task<IResult> CreateAccount(
         HttpContext context,
-        CosmosDbContext cosmos,
+        ISessionRepository repo,
         CreateAccountRequest request)
     {
         var sessionId = GetSessionId(context);
@@ -54,30 +53,20 @@ public static class AccountEndpoints
         account.BuyingPower = account.Cash;
         account.Equity = account.Cash;
 
-        await cosmos.Accounts.CreateItemAsync(account, new PartitionKey(sessionId));
+        await repo.UpsertAccountAsync(account);
 
         return Results.Created($"/v1/accounts/{account.Id}", MapToResponse(account));
     }
 
     private static async Task<IResult> ListAccounts(
         HttpContext context,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        var query = new QueryDefinition("SELECT * FROM c WHERE c.sessionId = @sessionId")
-            .WithParameter("@sessionId", sessionId);
-
-        var accounts = new List<Account>();
-        using var iterator = cosmos.Accounts.GetItemQueryIterator<Account>(query);
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync();
-            accounts.AddRange(response);
-        }
+        var accounts = await repo.GetAccountsAsync(sessionId);
 
         return Results.Ok(accounts.Select(MapToResponse));
     }
@@ -85,88 +74,64 @@ public static class AccountEndpoints
     private static async Task<IResult> GetAccount(
         HttpContext context,
         string accountId,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        try
-        {
-            var response = await cosmos.Accounts.ReadItemAsync<Account>(
-                accountId,
-                new PartitionKey(sessionId));
-
-            return Results.Ok(MapToResponse(response.Resource));
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
+        var account = await repo.GetAccountAsync(sessionId, accountId);
+        if (account == null)
             return Results.NotFound(new { code = 40410000, message = "Account not found" });
-        }
+
+        return Results.Ok(MapToResponse(account));
     }
 
     private static async Task<IResult> UpdateAccount(
         HttpContext context,
         string accountId,
-        CosmosDbContext cosmos,
+        ISessionRepository repo,
         UpdateAccountRequest request)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        try
-        {
-            var response = await cosmos.Accounts.ReadItemAsync<Account>(
-                accountId,
-                new PartitionKey(sessionId));
-
-            var account = response.Resource;
-
-            if (request.Contact != null && account.Contact != null)
-            {
-                if (request.Contact.EmailAddress != null)
-                    account.Contact.EmailAddress = request.Contact.EmailAddress;
-                if (request.Contact.PhoneNumber != null)
-                    account.Contact.PhoneNumber = request.Contact.PhoneNumber;
-            }
-
-            await cosmos.Accounts.UpsertItemAsync(account, new PartitionKey(sessionId));
-
-            return Results.Ok(MapToResponse(account));
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
+        var account = await repo.GetAccountAsync(sessionId, accountId);
+        if (account == null)
             return Results.NotFound(new { code = 40410000, message = "Account not found" });
+
+        if (request.Contact != null && account.Contact != null)
+        {
+            if (request.Contact.EmailAddress != null)
+                account.Contact.EmailAddress = request.Contact.EmailAddress;
+            if (request.Contact.PhoneNumber != null)
+                account.Contact.PhoneNumber = request.Contact.PhoneNumber;
         }
+
+        await repo.UpsertAccountAsync(account);
+
+        return Results.Ok(MapToResponse(account));
     }
 
     private static async Task<IResult> CloseAccount(
         HttpContext context,
         string accountId,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        try
-        {
-            var response = await cosmos.Accounts.ReadItemAsync<Account>(
-                accountId,
-                new PartitionKey(sessionId));
-
-            var account = response.Resource;
-            account.Status = AccountStatus.AccountClosed;
-
-            await cosmos.Accounts.UpsertItemAsync(account, new PartitionKey(sessionId));
-
-            return Results.NoContent();
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
+        var account = await repo.GetAccountAsync(sessionId, accountId);
+        if (account == null)
             return Results.NotFound(new { code = 40410000, message = "Account not found" });
-        }
+
+        account.Status = AccountStatus.AccountClosed;
+
+        await repo.UpsertAccountAsync(account);
+
+        return Results.NoContent();
     }
 
     private static string? GetSessionId(HttpContext context)

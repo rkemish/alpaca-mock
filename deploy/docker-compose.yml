@@ -1,0 +1,67 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "5050:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      # For Apple Silicon: Use Azure Cosmos DB free tier or set USE_INMEMORY_COSMOS=true
+      - COSMOS_CONNECTION_STRING=${COSMOS_CONNECTION_STRING:-}
+      - USE_INMEMORY_COSMOS=${USE_INMEMORY_COSMOS:-true}
+      - POSTGRES_CONNECTION_STRING=Host=postgres;Database=alpacamock;Username=postgres;Password=postgres
+      - ApiKeys__0__Key=test-api-key
+      - ApiKeys__0__Secret=test-api-secret
+      - ApiKeys__0__Name=Test User
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - alpacamock-net
+    restart: on-failure
+
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    hostname: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=alpacamock
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      alpacamock-net:
+        aliases:
+          - postgres
+          - db
+
+  # Cosmos DB Emulator (x64 only - works on Intel Macs and Linux)
+  # Uncomment if you're on Intel/AMD architecture
+  # cosmosdb:
+  #   image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+  #   platform: linux/amd64
+  #   ports:
+  #     - "8081:8081"
+  #     - "10250-10254:10250-10254"
+  #   environment:
+  #     - AZURE_COSMOS_EMULATOR_PARTITION_COUNT=10
+  #     - AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=true
+  #   mem_limit: 3g
+  #   networks:
+  #     - alpacamock-net
+
+networks:
+  alpacamock-net:
+    driver: bridge
+
+volumes:
+  postgres_data:

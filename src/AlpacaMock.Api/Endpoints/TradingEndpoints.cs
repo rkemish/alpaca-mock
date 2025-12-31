@@ -1,7 +1,6 @@
 using AlpacaMock.Domain.Trading;
-using AlpacaMock.Infrastructure.Cosmos;
+using AlpacaMock.Infrastructure;
 using AlpacaMock.Infrastructure.Postgres;
-using Microsoft.Azure.Cosmos;
 
 namespace AlpacaMock.Api.Endpoints;
 
@@ -66,7 +65,7 @@ public static class TradingEndpoints
     private static async Task<IResult> CreateOrder(
         HttpContext context,
         string accountId,
-        CosmosDbContext cosmos,
+        ISessionRepository repo,
         BarRepository barRepo,
         MatchingEngine matchingEngine,
         OrderValidator orderValidator,
@@ -79,22 +78,14 @@ public static class TradingEndpoints
 
         // Get session for current simulation time
         // Session determines what time "now" is for the backtesting engine
-        var session = await GetSessionAsync(cosmos, sessionId);
+        var session = await repo.GetByIdAsync(sessionId);
         if (session == null)
             return Results.BadRequest(new { code = 40010001, message = "Invalid session" });
 
         // Get account for validation (buying power, PDT status, etc.)
-        Domain.Accounts.Account account;
-        try
-        {
-            var accountResponse = await cosmos.Accounts.ReadItemAsync<Domain.Accounts.Account>(
-                accountId, new PartitionKey(sessionId));
-            account = accountResponse.Resource;
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
+        var account = await repo.GetAccountAsync(sessionId, accountId);
+        if (account == null)
             return Results.NotFound(new { code = 40410000, message = "Account not found" });
-        }
 
         // Handle notional orders: convert dollar amount to share quantity
         // Alpaca allows specifying order value instead of quantity for market orders
@@ -153,7 +144,7 @@ public static class TradingEndpoints
         }
 
         // Persist order to database
-        await cosmos.Orders.CreateItemAsync(order, new PartitionKey(sessionId));
+        await repo.UpsertOrderAsync(order);
 
         // For market orders with available bar data, attempt immediate fill
         // This simulates real-time execution during market hours
@@ -168,10 +159,10 @@ public static class TradingEndpoints
                 order.FilledAt = fill.Timestamp;
                 order.Status = fill.IsPartial ? OrderStatus.PartiallyFilled : OrderStatus.Filled;
 
-                await cosmos.Orders.UpsertItemAsync(order, new PartitionKey(sessionId));
+                await repo.UpsertOrderAsync(order);
 
                 // Update position to reflect the fill
-                await UpdatePositionAsync(cosmos, sessionId, accountId, order, fill);
+                await UpdatePositionAsync(repo, sessionId, accountId, order, fill);
             }
         }
 
@@ -190,7 +181,7 @@ public static class TradingEndpoints
     private static async Task<IResult> ListOrders(
         HttpContext context,
         string accountId,
-        CosmosDbContext cosmos,
+        ISessionRepository repo,
         string? status = null,
         int? limit = null)
     {
@@ -198,36 +189,23 @@ public static class TradingEndpoints
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        // Build query with optional status filter
-        var queryText = "SELECT * FROM c WHERE c.sessionId = @sessionId AND c.accountId = @accountId";
+        var allOrders = await repo.GetOrdersAsync(sessionId, accountId);
+
+        // Apply status filter if provided
+        var filteredOrders = allOrders.AsEnumerable();
         if (!string.IsNullOrEmpty(status))
         {
-            queryText += " AND c.status = @status";
-        }
-        queryText += " ORDER BY c.submittedAt DESC";
-
-        var query = new QueryDefinition(queryText)
-            .WithParameter("@sessionId", sessionId)
-            .WithParameter("@accountId", accountId);
-
-        if (!string.IsNullOrEmpty(status))
-        {
-            query.WithParameter("@status", Enum.Parse<OrderStatus>(status, ignoreCase: true));
+            var statusEnum = Enum.Parse<OrderStatus>(status, ignoreCase: true);
+            filteredOrders = filteredOrders.Where(o => o.Status == statusEnum);
         }
 
-        // Execute query with pagination
-        var orders = new List<Order>();
-        using var iterator = cosmos.Orders.GetItemQueryIterator<Order>(query);
+        // Order by submitted time descending and apply limit
+        var result = filteredOrders
+            .OrderByDescending(o => o.SubmittedAt)
+            .Take(limit ?? 100)
+            .Select(MapOrderToResponse);
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync();
-            orders.AddRange(response);
-            if (limit.HasValue && orders.Count >= limit.Value)
-                break;
-        }
-
-        return Results.Ok(orders.Take(limit ?? 100).Select(MapOrderToResponse));
+        return Results.Ok(result);
     }
 
     /// <summary>
@@ -239,27 +217,17 @@ public static class TradingEndpoints
         HttpContext context,
         string accountId,
         string orderId,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        try
-        {
-            var response = await cosmos.Orders.ReadItemAsync<Order>(
-                orderId, new PartitionKey(sessionId));
-
-            // Verify order belongs to the specified account
-            if (response.Resource.AccountId != accountId)
-                return Results.NotFound(new { code = 40410000, message = "Order not found" });
-
-            return Results.Ok(MapOrderToResponse(response.Resource));
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
+        var order = await repo.GetOrderAsync(sessionId, orderId);
+        if (order == null || order.AccountId != accountId)
             return Results.NotFound(new { code = 40410000, message = "Order not found" });
-        }
+
+        return Results.Ok(MapOrderToResponse(order));
     }
 
     /// <summary>
@@ -272,35 +240,27 @@ public static class TradingEndpoints
         HttpContext context,
         string accountId,
         string orderId,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        try
-        {
-            var response = await cosmos.Orders.ReadItemAsync<Order>(
-                orderId, new PartitionKey(sessionId));
-
-            var order = response.Resource;
-
-            // Cannot cancel orders that are already in terminal states
-            if (order.Status is OrderStatus.Filled or OrderStatus.Cancelled or OrderStatus.Expired)
-                return Results.BadRequest(new { code = 40010002, message = "Order cannot be cancelled" });
-
-            // Mark order as cancelled
-            order.Status = OrderStatus.Cancelled;
-            order.CancelledAt = DateTimeOffset.UtcNow;
-
-            await cosmos.Orders.UpsertItemAsync(order, new PartitionKey(sessionId));
-
-            return Results.NoContent();
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
+        var order = await repo.GetOrderAsync(sessionId, orderId);
+        if (order == null)
             return Results.NotFound(new { code = 40410000, message = "Order not found" });
-        }
+
+        // Cannot cancel orders that are already in terminal states
+        if (order.Status is OrderStatus.Filled or OrderStatus.Cancelled or OrderStatus.Expired)
+            return Results.BadRequest(new { code = 40010002, message = "Order cannot be cancelled" });
+
+        // Mark order as cancelled
+        order.Status = OrderStatus.Cancelled;
+        order.CancelledAt = DateTimeOffset.UtcNow;
+
+        await repo.UpsertOrderAsync(order);
+
+        return Results.NoContent();
     }
 
     /// <summary>
@@ -312,28 +272,18 @@ public static class TradingEndpoints
     private static async Task<IResult> ListPositions(
         HttpContext context,
         string accountId,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        // Query for non-zero positions only
-        var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.sessionId = @sessionId AND c.accountId = @accountId AND c.qty != 0")
-            .WithParameter("@sessionId", sessionId)
-            .WithParameter("@accountId", accountId);
+        var positions = await repo.GetPositionsAsync(sessionId, accountId);
 
-        var positions = new List<Position>();
-        using var iterator = cosmos.Positions.GetItemQueryIterator<Position>(query);
+        // Filter to non-zero positions only
+        var openPositions = positions.Where(p => p.Qty != 0);
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync();
-            positions.AddRange(response);
-        }
-
-        return Results.Ok(positions.Select(MapPositionToResponse));
+        return Results.Ok(openPositions.Select(MapPositionToResponse));
     }
 
     /// <summary>
@@ -346,28 +296,17 @@ public static class TradingEndpoints
         HttpContext context,
         string accountId,
         string symbol,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = GetSessionId(context);
         if (string.IsNullOrEmpty(sessionId))
             return Results.BadRequest(new { code = 40010000, message = "X-Session-Id header required" });
 
-        var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.sessionId = @sessionId AND c.accountId = @accountId AND c.symbol = @symbol")
-            .WithParameter("@sessionId", sessionId)
-            .WithParameter("@accountId", accountId)
-            .WithParameter("@symbol", symbol.ToUpperInvariant());
+        var position = await repo.GetPositionAsync(sessionId, accountId, symbol.ToUpperInvariant());
 
-        using var iterator = cosmos.Positions.GetItemQueryIterator<Position>(query);
-
-        if (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync();
-            var position = response.FirstOrDefault();
-            // Only return if position has non-zero quantity
-            if (position != null && position.Qty != 0)
-                return Results.Ok(MapPositionToResponse(position));
-        }
+        // Only return if position has non-zero quantity
+        if (position != null && position.Qty != 0)
+            return Results.Ok(MapPositionToResponse(position));
 
         return Results.NotFound(new { code = 40410000, message = "Position not found" });
     }
@@ -385,29 +324,11 @@ public static class TradingEndpoints
         HttpContext context,
         string accountId,
         string symbol,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         // TODO: Implement position closing by creating a market order
         // This would create a market order to close the position
         return Results.StatusCode(501);
-    }
-
-    /// <summary>
-    /// Retrieves a session by ID from Cosmos DB.
-    /// Returns null if the session doesn't exist.
-    /// </summary>
-    private static async Task<Domain.Sessions.Session?> GetSessionAsync(CosmosDbContext cosmos, string sessionId)
-    {
-        try
-        {
-            var response = await cosmos.Sessions.ReadItemAsync<Domain.Sessions.Session>(
-                sessionId, new PartitionKey(sessionId));
-            return response.Resource;
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            return null;
-        }
     }
 
     /// <summary>
@@ -417,31 +338,17 @@ public static class TradingEndpoints
     /// 1. Looks up existing position for the symbol (or creates new)
     /// 2. Applies the fill to update quantity and average price
     /// 3. Updates current price and P&L calculations
-    /// 4. Persists the updated position to Cosmos DB
+    /// 4. Persists the updated position
     /// </summary>
     private static async Task UpdatePositionAsync(
-        CosmosDbContext cosmos,
+        ISessionRepository repo,
         string sessionId,
         string accountId,
         Order order,
         FillResult fill)
     {
         // Try to find existing position for this symbol
-        var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.sessionId = @sessionId AND c.accountId = @accountId AND c.symbol = @symbol")
-            .WithParameter("@sessionId", sessionId)
-            .WithParameter("@accountId", accountId)
-            .WithParameter("@symbol", order.Symbol);
-
-        Position? position = null;
-        using (var iterator = cosmos.Positions.GetItemQueryIterator<Position>(query))
-        {
-            if (iterator.HasMoreResults)
-            {
-                var response = await iterator.ReadNextAsync();
-                position = response.FirstOrDefault();
-            }
-        }
+        var position = await repo.GetPositionAsync(sessionId, accountId, order.Symbol);
 
         // Create new position if none exists
         if (position == null)
@@ -464,7 +371,7 @@ public static class TradingEndpoints
         position.UpdatePrices(fill.FillPrice);
 
         // Persist the updated position
-        await cosmos.Positions.UpsertItemAsync(position, new PartitionKey(sessionId));
+        await repo.UpsertPositionAsync(position);
     }
 
     /// <summary>

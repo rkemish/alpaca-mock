@@ -1,7 +1,6 @@
 using AlpacaMock.Domain.Market;
-using AlpacaMock.Infrastructure.Cosmos;
+using AlpacaMock.Infrastructure;
 using AlpacaMock.Infrastructure.Postgres;
-using Microsoft.Azure.Cosmos;
 
 namespace AlpacaMock.Api.Endpoints;
 
@@ -74,7 +73,7 @@ public static class MarketDataEndpoints
         HttpContext context,
         string symbol,
         BarRepository barRepo,
-        CosmosDbContext cosmos,
+        ISessionRepository repo,
         string? timeframe = null,
         string? start = null,
         string? end = null,
@@ -88,7 +87,7 @@ public static class MarketDataEndpoints
         if (!string.IsNullOrEmpty(sessionId))
         {
             // Use session's current simulation time
-            var session = await GetSessionAsync(cosmos, sessionId);
+            var session = await repo.GetByIdAsync(sessionId);
             if (session != null)
             {
                 endTime = session.CurrentSimulationTime;
@@ -145,7 +144,7 @@ public static class MarketDataEndpoints
         HttpContext context,
         string symbol,
         BarRepository barRepo,
-        CosmosDbContext cosmos)
+        ISessionRepository repo)
     {
         var sessionId = context.Request.Headers["X-Session-Id"].FirstOrDefault();
 
@@ -153,7 +152,7 @@ public static class MarketDataEndpoints
 
         if (!string.IsNullOrEmpty(sessionId))
         {
-            var session = await GetSessionAsync(cosmos, sessionId);
+            var session = await repo.GetByIdAsync(sessionId);
             if (session == null)
                 return Results.BadRequest(new { code = 40010000, message = "Invalid session" });
 
@@ -188,20 +187,6 @@ public static class MarketDataEndpoints
                 z = "C"  // Tape
             }
         });
-    }
-
-    private static async Task<Domain.Sessions.Session?> GetSessionAsync(CosmosDbContext cosmos, string sessionId)
-    {
-        try
-        {
-            var response = await cosmos.Sessions.ReadItemAsync<Domain.Sessions.Session>(
-                sessionId, new PartitionKey(sessionId));
-            return response.Resource;
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            return null;
-        }
     }
 
     private static BarResolution ParseTimeframe(string timeframe)

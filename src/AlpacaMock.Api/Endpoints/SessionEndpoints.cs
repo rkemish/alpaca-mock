@@ -1,6 +1,6 @@
 using AlpacaMock.Api.Middleware;
 using AlpacaMock.Domain.Sessions;
-using AlpacaMock.Infrastructure.Cosmos;
+using AlpacaMock.Infrastructure;
 
 namespace AlpacaMock.Api.Endpoints;
 
@@ -23,7 +23,7 @@ public static class SessionEndpoints
 
     private static async Task<IResult> CreateSession(
         HttpContext context,
-        SessionRepository repo,
+        ISessionRepository repo,
         CreateSessionRequest request)
     {
         var apiKeyId = context.GetApiKeyId();
@@ -48,7 +48,7 @@ public static class SessionEndpoints
 
     private static async Task<IResult> ListSessions(
         HttpContext context,
-        SessionRepository repo)
+        ISessionRepository repo)
     {
         var apiKeyId = context.GetApiKeyId();
         var sessions = await repo.GetByApiKeyAsync(apiKeyId);
@@ -59,7 +59,7 @@ public static class SessionEndpoints
     private static async Task<IResult> GetSession(
         HttpContext context,
         string sessionId,
-        SessionRepository repo)
+        ISessionRepository repo)
     {
         var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
@@ -74,7 +74,7 @@ public static class SessionEndpoints
     private static async Task<IResult> DeleteSession(
         HttpContext context,
         string sessionId,
-        SessionRepository repo)
+        ISessionRepository repo)
     {
         var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
@@ -90,7 +90,7 @@ public static class SessionEndpoints
     private static async Task<IResult> AdvanceTime(
         HttpContext context,
         string sessionId,
-        SessionRepository repo,
+        ISessionRepository repo,
         AdvanceTimeRequest request)
     {
         var apiKeyId = context.GetApiKeyId();
@@ -134,7 +134,7 @@ public static class SessionEndpoints
     private static async Task<IResult> PlaySession(
         HttpContext context,
         string sessionId,
-        SessionRepository repo)
+        ISessionRepository repo)
     {
         var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
@@ -154,7 +154,7 @@ public static class SessionEndpoints
     private static async Task<IResult> PauseSession(
         HttpContext context,
         string sessionId,
-        SessionRepository repo)
+        ISessionRepository repo)
     {
         var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
@@ -174,7 +174,7 @@ public static class SessionEndpoints
     private static async Task<IResult> SetSpeed(
         HttpContext context,
         string sessionId,
-        SessionRepository repo,
+        ISessionRepository repo,
         SetSpeedRequest request)
     {
         var apiKeyId = context.GetApiKeyId();

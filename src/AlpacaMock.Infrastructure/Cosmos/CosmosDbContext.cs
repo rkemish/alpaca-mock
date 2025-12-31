@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Microsoft.Azure.Cosmos;
 
 namespace AlpacaMock.Infrastructure.Cosmos;
@@ -19,13 +20,34 @@ public class CosmosDbContext : IAsyncDisposable
 
     public CosmosDbContext(string connectionString, string databaseName = "alpacamock")
     {
-        _client = new CosmosClient(connectionString, new CosmosClientOptions
+        var options = new CosmosClientOptions
         {
             SerializerOptions = new CosmosSerializationOptions
             {
                 PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
             }
-        });
+        };
+
+        // Detect emulator by checking for well-known emulator key or endpoint
+        var isEmulator = connectionString.Contains("C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==")
+            || connectionString.Contains("localhost:8081")
+            || connectionString.Contains("cosmosdb:8081");
+
+        if (isEmulator)
+        {
+            // Disable SSL verification for emulator's self-signed certificate
+            options.HttpClientFactory = () =>
+            {
+                var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                };
+                return new HttpClient(handler);
+            };
+            options.ConnectionMode = ConnectionMode.Gateway;
+        }
+
+        _client = new CosmosClient(connectionString, options);
         _databaseName = databaseName;
     }
 

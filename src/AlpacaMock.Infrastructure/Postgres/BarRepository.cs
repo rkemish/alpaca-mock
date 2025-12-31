@@ -38,7 +38,7 @@ public class BarRepository : IAsyncDisposable
             LIMIT 1");
 
         cmd.Parameters.AddWithValue(symbol.ToUpperInvariant());
-        cmd.Parameters.AddWithValue(timestamp);
+        cmd.Parameters.AddWithValue(timestamp.UtcDateTime);
 
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
 
@@ -72,8 +72,8 @@ public class BarRepository : IAsyncDisposable
             {limitClause}");
 
         cmd.Parameters.AddWithValue(symbol.ToUpperInvariant());
-        cmd.Parameters.AddWithValue(start);
-        cmd.Parameters.AddWithValue(end);
+        cmd.Parameters.AddWithValue(start.UtcDateTime);
+        cmd.Parameters.AddWithValue(end.UtcDateTime);
 
         var bars = new List<Bar>();
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
@@ -110,7 +110,7 @@ public class BarRepository : IAsyncDisposable
             ORDER BY symbol, time DESC");
 
         cmd.Parameters.AddWithValue(symbolList.ToArray());
-        cmd.Parameters.AddWithValue(asOf);
+        cmd.Parameters.AddWithValue(asOf.UtcDateTime);
 
         var result = new Dictionary<string, Bar>();
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
@@ -147,7 +147,7 @@ public class BarRepository : IAsyncDisposable
         foreach (var bar in barList)
         {
             await writer.StartRowAsync(cancellationToken);
-            await writer.WriteAsync(bar.Timestamp, NpgsqlTypes.NpgsqlDbType.TimestampTz, cancellationToken);
+            await writer.WriteAsync(bar.Timestamp.UtcDateTime, NpgsqlTypes.NpgsqlDbType.TimestampTz, cancellationToken);
             await writer.WriteAsync(bar.Symbol.ToUpperInvariant(), cancellationToken);
             await writer.WriteAsync(bar.Open, cancellationToken);
             await writer.WriteAsync(bar.High, cancellationToken);
