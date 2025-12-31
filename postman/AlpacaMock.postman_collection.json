@@ -1,0 +1,1485 @@
+{
+	"info": {
+		"_postman_id": "alpacamock-collection",
+		"name": "AlpacaMock API",
+		"description": "Postman collection for testing AlpacaMock - an Alpaca-compatible backtesting API.\n\n## Setup\n1. Import this collection and one of the environment files (Local or Cloud)\n2. Select the environment in Postman\n3. Run \"Create Session\" first to get a session ID\n4. Run \"Create Account\" to get an account ID\n5. You're ready to place orders and test!\n\n## Authentication\nAll endpoints (except /health) require Basic Auth. The collection automatically generates the Authorization header from the `apiKey` and `apiSecret` environment variables.\n\n## Session Context\nMost endpoints require the `X-Session-Id` header, which is automatically set from the `sessionId` environment variable.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "basic",
+		"basic": [
+			{
+				"key": "username",
+				"value": "{{apiKey}}",
+				"type": "string"
+			},
+			{
+				"key": "password",
+				"value": "{{apiSecret}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Collection-level pre-request script",
+					"// Basic auth is handled by Postman's auth configuration"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "symbol",
+			"value": "AAPL",
+			"type": "default"
+		}
+	],
+	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Check if the API is running. No authentication required."
+					},
+					"response": [
+						{
+							"name": "Healthy",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/health",
+									"host": ["{{baseUrl}}"],
+									"path": ["health"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"body": "{\"status\":\"Healthy\"}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Sessions",
+			"item": [
+				{
+					"name": "Create Session",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.environment.set('sessionId', jsonData.id);",
+									"    console.log('Session ID saved:', jsonData.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"startTime\": \"2023-01-03T09:30:00Z\",\n  \"endTime\": \"2023-12-29T16:00:00Z\",\n  \"name\": \"My Backtest Session\",\n  \"initialCash\": 100000\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/sessions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "sessions"]
+						},
+						"description": "Create a new backtest session. The session ID is automatically saved to the environment.\n\n**Parameters:**\n- `startTime`: Start of the backtest period (ISO 8601)\n- `endTime`: End of the backtest period (ISO 8601)\n- `name`: Optional session name\n- `initialCash`: Starting cash balance"
+					},
+					"response": [
+						{
+							"name": "Session Created",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"startTime\": \"2023-01-03T09:30:00Z\",\n  \"endTime\": \"2023-12-29T16:00:00Z\",\n  \"name\": \"My Backtest Session\",\n  \"initialCash\": 100000\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"body": "{\n  \"id\": \"abc123\",\n  \"name\": \"My Backtest Session\",\n  \"status\": \"active\",\n  \"simulation_start\": \"2023-01-03T09:30:00Z\",\n  \"simulation_end\": \"2023-12-29T16:00:00Z\",\n  \"current_time\": \"2023-01-03T09:30:00Z\",\n  \"playback_state\": \"paused\",\n  \"playback_speed\": 1.0,\n  \"initial_cash\": 100000,\n  \"total_realized_pnl\": 0,\n  \"total_unrealized_pnl\": 0,\n  \"created_at\": \"2024-01-15T10:30:00Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "List Sessions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/sessions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "sessions"]
+						},
+						"description": "List all sessions for the authenticated user."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Session",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "sessions", "{{sessionId}}"]
+						},
+						"description": "Get details of a specific session including current simulation time and playback state."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Session",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "sessions", "{{sessionId}}"]
+						},
+						"description": "Delete a session and all associated data."
+					},
+					"response": []
+				},
+				{
+					"name": "Time Control",
+					"item": [
+						{
+							"name": "Advance Time (by duration)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"duration\": 5\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}/time/advance",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}", "time", "advance"]
+								},
+								"description": "Advance simulation time by a specified number of minutes.\n\n**Parameters:**\n- `duration`: Number of minutes to advance (default: 1)"
+							},
+							"response": [
+								{
+									"name": "Time Advanced",
+									"status": "OK",
+									"code": 200,
+									"body": "{\n  \"previousTime\": \"2023-01-03T09:30:00Z\",\n  \"currentTime\": \"2023-01-03T09:35:00Z\",\n  \"simulationEnd\": \"2023-12-29T16:00:00Z\",\n  \"isCompleted\": false\n}"
+								}
+							]
+						},
+						{
+							"name": "Advance Time (to target)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"targetTime\": \"2023-01-03T10:00:00Z\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}/time/advance",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}", "time", "advance"]
+								},
+								"description": "Jump to a specific simulation time.\n\n**Parameters:**\n- `targetTime`: Target time to advance to (ISO 8601)"
+							},
+							"response": []
+						},
+						{
+							"name": "Start Playback",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}/time/play",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}", "time", "play"]
+								},
+								"description": "Start continuous playback at the configured speed."
+							},
+							"response": []
+						},
+						{
+							"name": "Pause Playback",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}/time/pause",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}", "time", "pause"]
+								},
+								"description": "Pause continuous playback."
+							},
+							"response": []
+						},
+						{
+							"name": "Set Playback Speed",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"speed\": 100\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}/time/speed",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}", "time", "speed"]
+								},
+								"description": "Set playback speed multiplier.\n\n**Parameters:**\n- `speed`: Multiplier (1 = real-time, 100 = 100x speed)"
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Accounts",
+			"item": [
+				{
+					"name": "Create Account",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.environment.set('accountId', jsonData.id);",
+									"    console.log('Account ID saved:', jsonData.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Session-Id",
+								"value": "{{sessionId}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"initialCash\": 100000,\n  \"contact\": {\n    \"emailAddress\": \"trader@example.com\",\n    \"phoneNumber\": \"+1-555-1234\",\n    \"city\": \"New York\",\n    \"state\": \"NY\",\n    \"postalCode\": \"10001\",\n    \"country\": \"USA\"\n  },\n  \"identity\": {\n    \"givenName\": \"John\",\n    \"familyName\": \"Doe\",\n    \"dateOfBirth\": \"1990-01-15\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/accounts",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "accounts"]
+						},
+						"description": "Create a new trading account within the session. The account ID is automatically saved to the environment.\n\n**Requires:** X-Session-Id header"
+					},
+					"response": [
+						{
+							"name": "Account Created",
+							"status": "Created",
+							"code": 201,
+							"body": "{\n  \"id\": \"account-123\",\n  \"account_number\": \"A12345678\",\n  \"status\": \"ACTIVE\",\n  \"crypto_status\": \"ACTIVE\",\n  \"currency\": \"USD\",\n  \"cash\": \"100000.00\",\n  \"portfolio_value\": \"100000.00\",\n  \"buying_power\": \"100000.00\",\n  \"equity\": \"100000.00\",\n  \"daytrade_count\": 0,\n  \"pattern_day_trader\": false,\n  \"trading_blocked\": false,\n  \"created_at\": \"2024-01-15T10:30:00Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "List Accounts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Session-Id",
+								"value": "{{sessionId}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/accounts",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "accounts"]
+						},
+						"description": "List all accounts in the session.\n\n**Requires:** X-Session-Id header"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Account",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Session-Id",
+								"value": "{{sessionId}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/accounts/{{accountId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "accounts", "{{accountId}}"]
+						},
+						"description": "Get account details including cash, equity, buying power, and PDT status.\n\n**Requires:** X-Session-Id header"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Account",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Session-Id",
+								"value": "{{sessionId}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"contact\": {\n    \"emailAddress\": \"newemail@example.com\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/accounts/{{accountId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "accounts", "{{accountId}}"]
+						},
+						"description": "Update account contact information.\n\n**Requires:** X-Session-Id header"
+					},
+					"response": []
+				},
+				{
+					"name": "Close Account",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Session-Id",
+								"value": "{{sessionId}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/accounts/{{accountId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "accounts", "{{accountId}}"]
+						},
+						"description": "Close an account.\n\n**Requires:** X-Session-Id header"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Trading",
+			"item": [
+				{
+					"name": "Orders",
+					"item": [
+						{
+							"name": "Create Market Order",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('orderId', jsonData.id);",
+											"    console.log('Order ID saved:', jsonData.id);",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"symbol\": \"AAPL\",\n  \"side\": \"buy\",\n  \"qty\": 10,\n  \"type\": \"market\",\n  \"timeInForce\": \"day\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "Place a market order. Fills at bar open price with slippage on next time advance.\n\n**Parameters:**\n- `symbol`: Stock symbol (uppercase)\n- `side`: \"buy\" or \"sell\"\n- `qty`: Number of shares\n- `type`: \"market\"\n- `timeInForce`: \"day\", \"gtc\", \"ioc\", \"fok\""
+							},
+							"response": [
+								{
+									"name": "Order Created",
+									"status": "Created",
+									"code": 201,
+									"body": "{\n  \"id\": \"order-123\",\n  \"symbol\": \"AAPL\",\n  \"qty\": \"10\",\n  \"side\": \"buy\",\n  \"type\": \"market\",\n  \"time_in_force\": \"day\",\n  \"status\": \"accepted\",\n  \"submitted_at\": \"2023-01-03T09:30:00Z\"\n}"
+								}
+							]
+						},
+						{
+							"name": "Create Limit Order",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('orderId', jsonData.id);",
+											"    console.log('Order ID saved:', jsonData.id);",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"symbol\": \"AAPL\",\n  \"side\": \"buy\",\n  \"qty\": 10,\n  \"type\": \"limit\",\n  \"limitPrice\": 150.00,\n  \"timeInForce\": \"day\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "Place a limit order. Fills when bar range touches the limit price.\n\n**Parameters:**\n- `limitPrice`: Maximum price for buys, minimum for sells"
+							},
+							"response": []
+						},
+						{
+							"name": "Create Stop Order",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('orderId', jsonData.id);",
+											"    console.log('Order ID saved:', jsonData.id);",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"symbol\": \"AAPL\",\n  \"side\": \"sell\",\n  \"qty\": 10,\n  \"type\": \"stop\",\n  \"stopPrice\": 145.00,\n  \"timeInForce\": \"day\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "Place a stop order. Triggers a market order when the stop price is reached.\n\n**Rules:**\n- Buy stops must be above current price\n- Sell stops must be below current price"
+							},
+							"response": []
+						},
+						{
+							"name": "Create Stop-Limit Order",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('orderId', jsonData.id);",
+											"    console.log('Order ID saved:', jsonData.id);",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"symbol\": \"AAPL\",\n  \"side\": \"sell\",\n  \"qty\": 10,\n  \"type\": \"stop_limit\",\n  \"stopPrice\": 145.00,\n  \"limitPrice\": 144.50,\n  \"timeInForce\": \"day\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "Place a stop-limit order. Triggers a limit order when the stop price is reached.\n\n**Parameters:**\n- `stopPrice`: Price that triggers the order\n- `limitPrice`: Limit price for the triggered order"
+							},
+							"response": []
+						},
+						{
+							"name": "Create Notional Order",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('orderId', jsonData.id);",
+											"    console.log('Order ID saved:', jsonData.id);",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"symbol\": \"AAPL\",\n  \"side\": \"buy\",\n  \"notional\": 1000,\n  \"type\": \"market\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "Place an order by dollar amount (fractional shares). Market orders only.\n\n**Parameters:**\n- `notional`: Dollar amount to invest (instead of qty)"
+							},
+							"response": []
+						},
+						{
+							"name": "List Orders",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "List all orders for the account.\n\n**Query Parameters:**\n- `status`: Filter by status (e.g., \"filled\", \"new\")\n- `limit`: Max results (default: 100)"
+							},
+							"response": []
+						},
+						{
+							"name": "List Orders (Filled)",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders?status=filled",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"],
+									"query": [
+										{
+											"key": "status",
+											"value": "filled"
+										}
+									]
+								},
+								"description": "List only filled orders."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Order",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders/{{orderId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders", "{{orderId}}"]
+								},
+								"description": "Get details of a specific order including fill information."
+							},
+							"response": []
+						},
+						{
+							"name": "Cancel Order",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders/{{orderId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders", "{{orderId}}"]
+								},
+								"description": "Cancel an open order. Only works for orders that haven't been filled."
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Positions",
+					"item": [
+						{
+							"name": "List Positions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/positions",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "positions"]
+								},
+								"description": "List all positions for the account with P&L information."
+							},
+							"response": [
+								{
+									"name": "Positions List",
+									"status": "OK",
+									"code": 200,
+									"body": "[\n  {\n    \"symbol\": \"AAPL\",\n    \"qty\": \"10\",\n    \"side\": \"long\",\n    \"avg_entry_price\": \"150.25\",\n    \"market_value\": \"1520.00\",\n    \"cost_basis\": \"1502.50\",\n    \"unrealized_pl\": \"17.50\",\n    \"current_price\": \"152.00\"\n  }\n]"
+								}
+							]
+						},
+						{
+							"name": "Get Position",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/positions/{{symbol}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "positions", "{{symbol}}"]
+								},
+								"description": "Get position details for a specific symbol."
+							},
+							"response": []
+						},
+						{
+							"name": "Close Position",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/positions/{{symbol}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "positions", "{{symbol}}"]
+								},
+								"description": "Close entire position in a symbol by placing a market order."
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Market Data",
+			"item": [
+				{
+					"name": "List Assets",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/assets",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "assets"]
+						},
+						"description": "List all available assets.\n\n**Query Parameters:**\n- `status`: \"active\" or \"inactive\"\n- `asset_class`: \"us_equity\" or \"crypto\""
+					},
+					"response": []
+				},
+				{
+					"name": "List Assets (Active)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/assets?status=active",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "assets"],
+							"query": [
+								{
+									"key": "status",
+									"value": "active"
+								}
+							]
+						},
+						"description": "List only active (tradable) assets."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Asset",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/assets/{{symbol}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "assets", "{{symbol}}"]
+						},
+						"description": "Get details for a specific asset by symbol."
+					},
+					"response": [
+						{
+							"name": "Asset Details",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n  \"id\": \"asset-uuid\",\n  \"class\": \"us_equity\",\n  \"exchange\": \"NASDAQ\",\n  \"symbol\": \"AAPL\",\n  \"name\": \"Apple Inc.\",\n  \"status\": \"active\",\n  \"tradable\": true,\n  \"marginable\": true,\n  \"shortable\": true,\n  \"fractionable\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Historical Bars",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Session-Id",
+								"value": "{{sessionId}}",
+								"description": "Optional - if provided, uses session time context"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/assets/{{symbol}}/bars?timeframe=1Min&limit=100",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "assets", "{{symbol}}", "bars"],
+							"query": [
+								{
+									"key": "timeframe",
+									"value": "1Min"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							]
+						},
+						"description": "Get historical OHLCV bars for a symbol.\n\n**Query Parameters:**\n- `timeframe`: \"1Min\", \"1Hour\", \"1Day\", \"1Week\", \"1Month\"\n- `start`: Start time (ISO 8601)\n- `end`: End time (ISO 8601)\n- `limit`: Max bars to return (default: 1000)"
+					},
+					"response": [
+						{
+							"name": "Bars Response",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n  \"bars\": [\n    {\n      \"t\": \"2023-01-03T09:30:00Z\",\n      \"o\": 130.28,\n      \"h\": 130.90,\n      \"l\": 129.89,\n      \"c\": 130.50,\n      \"v\": 1234567\n    }\n  ],\n  \"symbol\": \"AAPL\",\n  \"next_page_token\": null\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Latest Quote",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Session-Id",
+								"value": "{{sessionId}}",
+								"description": "Optional - if provided, returns quote at session's current time"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/assets/{{symbol}}/quotes/latest",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "assets", "{{symbol}}", "quotes", "latest"]
+						},
+						"description": "Get the latest quote (bid/ask) for a symbol. If X-Session-Id is provided, returns the quote at the session's current simulation time."
+					},
+					"response": [
+						{
+							"name": "Quote Response",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n  \"symbol\": \"AAPL\",\n  \"quote\": {\n    \"t\": \"2023-01-03T09:30:00Z\",\n    \"bp\": 130.49,\n    \"bs\": 100,\n    \"ap\": 130.51,\n    \"as\": 100\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Workflows",
+			"item": [
+				{
+					"name": "1. Setup Backtest",
+					"item": [
+						{
+							"name": "1.1 Create Session",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('sessionId', jsonData.id);",
+											"    console.log('Session ID saved:', jsonData.id);",
+											"    pm.test('Session created successfully', function() {",
+											"        pm.expect(jsonData.id).to.be.a('string');",
+											"    });",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"startTime\": \"2023-01-03T09:30:00Z\",\n  \"endTime\": \"2023-01-31T16:00:00Z\",\n  \"name\": \"January 2023 Backtest\",\n  \"initialCash\": 100000\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions"]
+								},
+								"description": "Step 1: Create a backtest session for January 2023"
+							},
+							"response": []
+						},
+						{
+							"name": "1.2 Create Account",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('accountId', jsonData.id);",
+											"    console.log('Account ID saved:', jsonData.id);",
+											"    pm.test('Account created successfully', function() {",
+											"        pm.expect(jsonData.id).to.be.a('string');",
+											"        pm.expect(jsonData.cash).to.equal('100000.00');",
+											"    });",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"initialCash\": 100000\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/accounts",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "accounts"]
+								},
+								"description": "Step 2: Create a trading account with $100,000"
+							},
+							"response": []
+						},
+						{
+							"name": "1.3 Check Session Status",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Session is active', function() {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.status).to.equal('active');",
+											"    pm.expect(jsonData.playback_state).to.equal('paused');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}"]
+								},
+								"description": "Step 3: Verify session is active and ready"
+							},
+							"response": []
+						}
+					],
+					"description": "Complete workflow to set up a new backtest session"
+				},
+				{
+					"name": "2. Execute Trade",
+					"item": [
+						{
+							"name": "2.1 Get Quote",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Quote received', function() {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.quote.bp).to.be.above(0);",
+											"    console.log('Current bid price:', jsonData.quote.bp);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/assets/AAPL/quotes/latest",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "assets", "AAPL", "quotes", "latest"]
+								},
+								"description": "Step 1: Check current price before trading"
+							},
+							"response": []
+						},
+						{
+							"name": "2.2 Place Market Order",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('orderId', jsonData.id);",
+											"    pm.test('Order accepted or filled', function() {",
+											"        pm.expect(['accepted', 'filled']).to.include(jsonData.status);",
+											"    });",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"symbol\": \"AAPL\",\n  \"side\": \"buy\",\n  \"qty\": 10,\n  \"type\": \"market\",\n  \"timeInForce\": \"day\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "Step 2: Place a market buy order for 10 AAPL shares"
+							},
+							"response": []
+						},
+						{
+							"name": "2.3 Advance Time",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Time advanced', function() {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.currentTime).to.not.equal(jsonData.previousTime);",
+											"    console.log('New time:', jsonData.currentTime);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"duration\": 1\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}/time/advance",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}", "time", "advance"]
+								},
+								"description": "Step 3: Advance time 1 minute to fill the order"
+							},
+							"response": []
+						},
+						{
+							"name": "2.4 Check Position",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Position created', function() {",
+											"    var jsonData = pm.response.json();",
+											"    pm.expect(jsonData.length).to.be.above(0);",
+											"    var aapl = jsonData.find(p => p.symbol === 'AAPL');",
+											"    pm.expect(aapl).to.not.be.undefined;",
+											"    pm.expect(parseInt(aapl.qty)).to.equal(10);",
+											"    console.log('Position:', aapl.qty, 'shares at', aapl.avg_entry_price);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/positions",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "positions"]
+								},
+								"description": "Step 4: Verify the position was created"
+							},
+							"response": []
+						}
+					],
+					"description": "Execute a simple buy trade and verify the position"
+				},
+				{
+					"name": "3. Limit Order Flow",
+					"item": [
+						{
+							"name": "3.1 Get Current Price",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 200) {",
+											"    var jsonData = pm.response.json();",
+											"    var limitPrice = (jsonData.quote.bp * 0.99).toFixed(2);",
+											"    pm.environment.set('limitPrice', limitPrice);",
+											"    console.log('Setting limit price 1% below bid:', limitPrice);",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/assets/MSFT/quotes/latest",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "assets", "MSFT", "quotes", "latest"]
+								},
+								"description": "Step 1: Get current price to calculate limit price"
+							},
+							"response": []
+						},
+						{
+							"name": "3.2 Place Limit Order",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"if (pm.response.code === 201) {",
+											"    var jsonData = pm.response.json();",
+											"    pm.environment.set('orderId', jsonData.id);",
+											"    pm.test('Limit order accepted', function() {",
+											"        pm.expect(jsonData.status).to.equal('accepted');",
+											"        pm.expect(jsonData.type).to.equal('limit');",
+											"    });",
+											"}"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"symbol\": \"MSFT\",\n  \"side\": \"buy\",\n  \"qty\": 5,\n  \"type\": \"limit\",\n  \"limitPrice\": 250.00,\n  \"timeInForce\": \"day\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"]
+								},
+								"description": "Step 2: Place limit order below market (adjust limitPrice as needed)"
+							},
+							"response": []
+						},
+						{
+							"name": "3.3 Advance Time (30 min)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"duration\": 30\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/v1/sessions/{{sessionId}}/time/advance",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "sessions", "{{sessionId}}", "time", "advance"]
+								},
+								"description": "Step 3: Advance time to give the order time to fill"
+							},
+							"response": []
+						},
+						{
+							"name": "3.4 Check Order Status",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Order status retrieved', function() {",
+											"    var jsonData = pm.response.json();",
+											"    console.log('Order status:', jsonData.status);",
+											"    if (jsonData.status === 'filled') {",
+											"        console.log('Filled at:', jsonData.filled_avg_price);",
+											"    }",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders/{{orderId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders", "{{orderId}}"]
+								},
+								"description": "Step 4: Check if the limit order has filled"
+							},
+							"response": []
+						}
+					],
+					"description": "Place a limit order and wait for fill"
+				},
+				{
+					"name": "4. End-of-Day Summary",
+					"item": [
+						{
+							"name": "4.1 List All Positions",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Positions retrieved', function() {",
+											"    var jsonData = pm.response.json();",
+											"    console.log('Total positions:', jsonData.length);",
+											"    var totalValue = jsonData.reduce((sum, p) => sum + parseFloat(p.market_value), 0);",
+											"    console.log('Total market value:', totalValue.toFixed(2));",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/positions",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "positions"]
+								},
+								"description": "View all current positions and P&L"
+							},
+							"response": []
+						},
+						{
+							"name": "4.2 Get Account Balance",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Account balance retrieved', function() {",
+											"    var jsonData = pm.response.json();",
+											"    console.log('Cash:', jsonData.cash);",
+											"    console.log('Equity:', jsonData.equity);",
+											"    console.log('Buying Power:', jsonData.buying_power);",
+											"    console.log('Day Trade Count:', jsonData.daytrade_count);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/accounts/{{accountId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "accounts", "{{accountId}}"]
+								},
+								"description": "Check account balance and equity"
+							},
+							"response": []
+						},
+						{
+							"name": "4.3 List Filled Orders",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test('Filled orders retrieved', function() {",
+											"    var jsonData = pm.response.json();",
+											"    console.log('Total filled orders:', jsonData.length);",
+											"    jsonData.forEach(order => {",
+											"        console.log(`${order.side} ${order.filled_qty} ${order.symbol} @ ${order.filled_avg_price}`);",
+											"    });",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Session-Id",
+										"value": "{{sessionId}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/trading/accounts/{{accountId}}/orders?status=filled",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1", "trading", "accounts", "{{accountId}}", "orders"],
+									"query": [
+										{
+											"key": "status",
+											"value": "filled"
+										}
+									]
+								},
+								"description": "List all executed trades"
+							},
+							"response": []
+						}
+					],
+					"description": "Review positions, account balance, and trade history"
+				}
+			],
+			"description": "Pre-built workflows for common testing scenarios. Run these in sequence."
+		}
+	]
+}

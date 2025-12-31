@@ -66,7 +66,7 @@ public class PolygonClient : IDisposable
                         High = agg.H,
                         Low = agg.L,
                         Close = agg.C,
-                        Volume = agg.V,
+                        Volume = (long)agg.V,
                         Vwap = agg.Vw,
                         Transactions = agg.N
                     });
@@ -166,7 +166,7 @@ public class PolygonClient : IDisposable
             High = agg.H,
             Low = agg.L,
             Close = agg.C,
-            Volume = agg.V,
+            Volume = (long)agg.V,
             Vwap = agg.Vw,
             Transactions = agg.N
         };
@@ -217,7 +217,7 @@ public class PolygonAgg
     public decimal C { get; set; }  // Close
 
     [JsonPropertyName("v")]
-    public long V { get; set; }  // Volume
+    public decimal V { get; set; }  // Volume (decimal because Polygon sometimes returns floats)
 
     [JsonPropertyName("vw")]
     public decimal? Vw { get; set; }  // VWAP

@@ -21,12 +21,14 @@ docs/
 ├── architecture/              # System design
 │   ├── overview.md            # Architecture diagram and data flow
 │   └── components.md          # Component deep-dive
-└── api/                       # API reference
-    ├── README.md              # Endpoint index
-    ├── sessions.md            # Session management
-    ├── accounts.md            # Account operations
-    ├── trading.md             # Orders and positions
-    └── market-data.md         # Assets and bars
+├── api/                       # API reference
+│   ├── README.md              # Endpoint index
+│   ├── sessions.md            # Session management
+│   ├── accounts.md            # Account operations
+│   ├── trading.md             # Orders and positions
+│   └── market-data.md         # Assets and bars
+└── testing/                   # Test documentation
+    └── functional-tests.md    # Postman/Newman functional tests
 ```
 
 ## Quick Links
@@ -54,6 +56,12 @@ docs/
 | [Accounts](api/accounts.md) | Trading account operations |
 | [Trading](api/trading.md) | Orders and positions |
 | [Market Data](api/market-data.md) | Assets and historical bars |
+
+### Testing
+
+| Document | Description |
+|----------|-------------|
+| [Functional Tests](testing/functional-tests.md) | Postman/Newman API testing guide |
 
 ## Key Concepts
 
