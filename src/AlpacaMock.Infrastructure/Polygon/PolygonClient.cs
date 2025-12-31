@@ -247,7 +247,7 @@ public class PolygonTicker
     public string? Cik { get; set; }
     public string? CompositeFigi { get; set; }
     public string? ShareClassFigi { get; set; }
-    public DateOnly? LastUpdatedUtc { get; set; }
+    public string? LastUpdatedUtc { get; set; }
 }
 
 public class PolygonTickerDetailsResponse
