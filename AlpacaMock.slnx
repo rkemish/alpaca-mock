@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AlpacaMock.Api/AlpacaMock.Api.csproj" />
+    <Project Path="src/AlpacaMock.DataIngestion/AlpacaMock.DataIngestion.csproj" />
+    <Project Path="src/AlpacaMock.Domain/AlpacaMock.Domain.csproj" />
+    <Project Path="src/AlpacaMock.Infrastructure/AlpacaMock.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AlpacaMock.Domain.Tests/AlpacaMock.Domain.Tests.csproj" />
+    <Project Path="tests/AlpacaMock.Api.Tests/AlpacaMock.Api.Tests.csproj" />
+  </Folder>
+</Solution>

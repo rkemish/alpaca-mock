@@ -1,0 +1,42 @@
+# .NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.user
+*.suo
+*.cache
+*.log
+
+# IDE
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Secrets and local config
+*.local.json
+appsettings.Development.json
+.env
+*.pfx
+*.key
+
+# Build artifacts
+publish/
+artifacts/
+TestResults/
+coverage/
+
+# NuGet
+*.nupkg
+packages/
+
+# Claude Code
+.claude/

@@ -1,0 +1,6 @@
+@AlpacaMock.Api_HostAddress = http://localhost:5131
+
+GET {{AlpacaMock.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
