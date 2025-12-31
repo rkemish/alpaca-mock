@@ -69,23 +69,8 @@ resource firewallAzureServices 'Microsoft.DBforPostgreSQL/flexibleServers/firewa
   }
 }
 
-resource timescaleConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
-  parent: postgresServer
-  name: 'shared_preload_libraries'
-  properties: {
-    value: 'pg_stat_statements,timescaledb'
-    source: 'user-override'
-  }
-}
-
-resource azureExtensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
-  parent: postgresServer
-  name: 'azure.extensions'
-  properties: {
-    value: 'TIMESCALEDB'
-    source: 'user-override'
-  }
-}
+// Note: TimescaleDB extension is available but has Apache license limitations on Azure.
+// The application gracefully falls back to standard PostgreSQL if TimescaleDB features aren't available.
 
 @description('Resource ID of the PostgreSQL server')
 output id string = postgresServer.id

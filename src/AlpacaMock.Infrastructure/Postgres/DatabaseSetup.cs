@@ -9,14 +9,14 @@ public static class DatabaseSetup
 {
     /// <summary>
     /// Creates all required tables and indexes.
+    /// Works with or without TimescaleDB extension.
     /// </summary>
     public static async Task InitializeAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         await using var dataSource = NpgsqlDataSource.Create(connectionString);
         await using var conn = await dataSource.OpenConnectionAsync(cancellationToken);
 
-        // Enable TimescaleDB extension
-        await ExecuteAsync(conn, "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;", cancellationToken);
+        var useTimescaleDb = await TryEnableTimescaleDb(conn, cancellationToken);
 
         // Create minute bars table
         await ExecuteAsync(conn, @"
@@ -29,14 +29,9 @@ public static class DatabaseSetup
                 close       NUMERIC(12,4) NOT NULL,
                 volume      BIGINT NOT NULL,
                 vwap        NUMERIC(12,4),
-                transactions INT
+                transactions INT,
+                PRIMARY KEY (symbol, time)
             );", cancellationToken);
-
-        // Convert to hypertable if not already
-        await ExecuteAsync(conn, @"
-            SELECT create_hypertable('bars_minute', 'time',
-                chunk_time_interval => INTERVAL '1 month',
-                if_not_exists => TRUE);", cancellationToken);
 
         // Create daily bars table
         await ExecuteAsync(conn, @"
@@ -49,22 +44,63 @@ public static class DatabaseSetup
                 close       NUMERIC(12,4) NOT NULL,
                 volume      BIGINT NOT NULL,
                 vwap        NUMERIC(12,4),
-                transactions INT
+                transactions INT,
+                PRIMARY KEY (symbol, time)
             );", cancellationToken);
 
-        await ExecuteAsync(conn, @"
-            SELECT create_hypertable('bars_daily', 'time',
-                chunk_time_interval => INTERVAL '1 year',
-                if_not_exists => TRUE);", cancellationToken);
+        // Convert to hypertables if TimescaleDB is available
+        if (useTimescaleDb)
+        {
+            await TryExecuteAsync(conn, @"
+                SELECT create_hypertable('bars_minute', 'time',
+                    chunk_time_interval => INTERVAL '1 month',
+                    if_not_exists => TRUE,
+                    migrate_data => TRUE);", cancellationToken);
 
-        // Create indexes for efficient lookups
-        await ExecuteAsync(conn, @"
+            await TryExecuteAsync(conn, @"
+                SELECT create_hypertable('bars_daily', 'time',
+                    chunk_time_interval => INTERVAL '1 year',
+                    if_not_exists => TRUE,
+                    migrate_data => TRUE);", cancellationToken);
+
+            // Try to enable compression (may not be available in Apache license)
+            await TryExecuteAsync(conn, @"
+                ALTER TABLE bars_minute SET (
+                    timescaledb.compress,
+                    timescaledb.compress_segmentby = 'symbol'
+                );", cancellationToken);
+
+            await TryExecuteAsync(conn, @"
+                ALTER TABLE bars_daily SET (
+                    timescaledb.compress,
+                    timescaledb.compress_segmentby = 'symbol'
+                );", cancellationToken);
+
+            await TryExecuteAsync(conn, @"
+                SELECT add_compression_policy('bars_minute', INTERVAL '7 days', if_not_exists => TRUE);",
+                cancellationToken);
+
+            await TryExecuteAsync(conn, @"
+                SELECT add_compression_policy('bars_daily', INTERVAL '30 days', if_not_exists => TRUE);",
+                cancellationToken);
+        }
+
+        // Create indexes for efficient lookups (if not using hypertables, these are important)
+        await TryExecuteAsync(conn, @"
             CREATE INDEX IF NOT EXISTS idx_bars_minute_symbol_time
             ON bars_minute (symbol, time DESC);", cancellationToken);
 
-        await ExecuteAsync(conn, @"
+        await TryExecuteAsync(conn, @"
             CREATE INDEX IF NOT EXISTS idx_bars_daily_symbol_time
             ON bars_daily (symbol, time DESC);", cancellationToken);
+
+        await TryExecuteAsync(conn, @"
+            CREATE INDEX IF NOT EXISTS idx_bars_minute_time
+            ON bars_minute (time DESC);", cancellationToken);
+
+        await TryExecuteAsync(conn, @"
+            CREATE INDEX IF NOT EXISTS idx_bars_daily_time
+            ON bars_daily (time DESC);", cancellationToken);
 
         // Create symbols reference table
         await ExecuteAsync(conn, @"
@@ -91,34 +127,31 @@ public static class DatabaseSetup
                 last_updated TIMESTAMPTZ DEFAULT NOW(),
                 PRIMARY KEY (symbol, resolution)
             );", cancellationToken);
+    }
 
-        // Enable compression on hypertables (for cost savings)
-        await ExecuteAsync(conn, @"
-            ALTER TABLE bars_minute SET (
-                timescaledb.compress,
-                timescaledb.compress_segmentby = 'symbol'
-            );", cancellationToken);
-
-        await ExecuteAsync(conn, @"
-            ALTER TABLE bars_daily SET (
-                timescaledb.compress,
-                timescaledb.compress_segmentby = 'symbol'
-            );", cancellationToken);
-
-        // Add compression policy (compress chunks older than 7 days)
+    private static async Task<bool> TryEnableTimescaleDb(NpgsqlConnection conn, CancellationToken cancellationToken)
+    {
         try
         {
-            await ExecuteAsync(conn, @"
-                SELECT add_compression_policy('bars_minute', INTERVAL '7 days', if_not_exists => TRUE);",
-                cancellationToken);
-
-            await ExecuteAsync(conn, @"
-                SELECT add_compression_policy('bars_daily', INTERVAL '30 days', if_not_exists => TRUE);",
-                cancellationToken);
+            await ExecuteAsync(conn, "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;", cancellationToken);
+            return true;
         }
         catch
         {
-            // Compression policies may fail if already exist or not supported
+            Console.WriteLine("TimescaleDB not available, using standard PostgreSQL tables.");
+            return false;
+        }
+    }
+
+    private static async Task TryExecuteAsync(NpgsqlConnection conn, string sql, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ExecuteAsync(conn, sql, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Optional command skipped: {ex.Message}");
         }
     }
 
