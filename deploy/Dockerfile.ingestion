@@ -1,0 +1,33 @@
+# Build stage - .NET 10.0 GA (LTS) on Ubuntu Noble
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Copy project files for restore layer caching
+COPY src/AlpacaMock.DataIngestion/AlpacaMock.DataIngestion.csproj src/AlpacaMock.DataIngestion/
+COPY src/AlpacaMock.Domain/AlpacaMock.Domain.csproj src/AlpacaMock.Domain/
+COPY src/AlpacaMock.Infrastructure/AlpacaMock.Infrastructure.csproj src/AlpacaMock.Infrastructure/
+
+# Restore dependencies
+RUN dotnet restore src/AlpacaMock.DataIngestion/AlpacaMock.DataIngestion.csproj
+
+# Copy source code
+COPY src/AlpacaMock.DataIngestion/ src/AlpacaMock.DataIngestion/
+COPY src/AlpacaMock.Domain/ src/AlpacaMock.Domain/
+COPY src/AlpacaMock.Infrastructure/ src/AlpacaMock.Infrastructure/
+
+# Build and publish
+RUN dotnet publish src/AlpacaMock.DataIngestion/AlpacaMock.DataIngestion.csproj \
+    -c Release \
+    -o /app/publish
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+WORKDIR /app
+
+# Copy published app
+COPY --from=build /app/publish .
+
+# Commands are passed as arguments to the entrypoint:
+# init-db, load-symbols, load-bars
+# Example: docker run alpacamock-ingestion load-bars -r daily
+ENTRYPOINT ["dotnet", "AlpacaMock.DataIngestion.dll"]

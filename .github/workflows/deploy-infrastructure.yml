@@ -1,0 +1,371 @@
+name: Deploy Azure Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      confirm_deployment:
+        description: 'I confirm I want to deploy infrastructure'
+        required: true
+        type: boolean
+        default: false
+      run_initial_setup:
+        description: 'Run initial database setup after deployment'
+        required: false
+        type: boolean
+        default: true
+      symbols_to_load:
+        description: 'Symbols to load (comma-separated). Leave empty for none.'
+        required: false
+        type: string
+        default: 'AAPL,MSFT,GOOGL,AMZN,META,NVDA,TSLA'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  LOCATION: eastus
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  estimate-cost:
+    runs-on: ubuntu-latest
+    outputs:
+      estimated_monthly_cost: ${{ steps.cost.outputs.total }}
+    steps:
+      - name: Calculate Estimated Monthly Cost
+        id: cost
+        run: |
+          echo "========================================"
+          echo "  ESTIMATED MONTHLY COST BREAKDOWN"
+          echo "========================================"
+          echo ""
+
+          # Cost estimates based on East US pricing (USD)
+          ACR_COST=5.00
+          POSTGRES_COST=13.00
+          POSTGRES_STORAGE_COST=3.20
+          COSMOS_COST=5.00
+          CONTAINER_APP_COST=15.00
+          LOG_ANALYTICS_COST=3.00
+          INGESTION_JOB_COST=2.00
+
+          TOTAL=$(echo "$ACR_COST + $POSTGRES_COST + $POSTGRES_STORAGE_COST + $COSMOS_COST + $CONTAINER_APP_COST + $LOG_ANALYTICS_COST + $INGESTION_JOB_COST" | bc)
+
+          echo "| Resource                  | Monthly Cost (USD) |"
+          echo "|---------------------------|-------------------|"
+          echo "| Container Registry (Basic)| \$${ACR_COST}              |"
+          echo "| PostgreSQL B1ms           | \$${POSTGRES_COST}             |"
+          echo "| PostgreSQL Storage (32GB) | \$${POSTGRES_STORAGE_COST}              |"
+          echo "| Cosmos DB (Serverless)    | \$${COSMOS_COST}              |"
+          echo "| Container App (24/7)      | \$${CONTAINER_APP_COST}             |"
+          echo "| Log Analytics             | \$${LOG_ANALYTICS_COST}              |"
+          echo "| Data Ingestion Job        | \$${INGESTION_JOB_COST}              |"
+          echo "|---------------------------|-------------------|"
+          printf "| %-25s | \$%-16s |\n" "TOTAL" "${TOTAL}"
+          echo ""
+          echo "========================================"
+          echo "NOTE: Actual costs may vary based on usage."
+          echo "Cosmos DB: \$0.282 per million RUs"
+          echo "Log Analytics: \$2.76 per GB ingested"
+          echo "========================================"
+
+          echo "total=${TOTAL}" >> $GITHUB_OUTPUT
+
+      - name: Display Cost Summary
+        run: |
+          echo "::notice title=Estimated Monthly Cost::Approximately \$${{ steps.cost.outputs.total }} USD/month for ${{ inputs.environment }} environment"
+
+  validate-deployment:
+    runs-on: ubuntu-latest
+    needs: estimate-cost
+    steps:
+      - name: Check Deployment Confirmation
+        if: ${{ inputs.confirm_deployment != true }}
+        run: |
+          echo "::error::Deployment not confirmed. Please check 'I confirm I want to deploy infrastructure' to proceed."
+          exit 1
+
+      - name: Display Confirmation
+        run: |
+          echo "Deployment confirmed for environment: ${{ inputs.environment }}"
+          echo "Estimated monthly cost: \$${{ needs.estimate-cost.outputs.estimated_monthly_cost }}"
+
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    needs: [estimate-cost, validate-deployment]
+    environment: ${{ inputs.environment }}
+    outputs:
+      api_url: ${{ steps.deploy.outputs.apiUrl }}
+      acr_name: ${{ steps.deploy.outputs.acrName }}
+      acr_login_server: ${{ steps.deploy.outputs.acrLoginServer }}
+      postgres_fqdn: ${{ steps.deploy.outputs.postgresServerFqdn }}
+      postgres_name: ${{ steps.deploy.outputs.postgresServerName }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name alpacamock-${{ inputs.environment }}-rg \
+            --location ${{ env.LOCATION }} \
+            --tags environment=${{ inputs.environment }} project=alpacamock
+
+      - name: Deploy Infrastructure
+        id: deploy
+        uses: azure/arm-deploy@v2
+        with:
+          resourceGroupName: alpacamock-${{ inputs.environment }}-rg
+          template: ./deploy/azure/main.bicep
+          parameters: >
+            environment=${{ inputs.environment }}
+            polygonApiKey=${{ secrets.POLYGON_API_KEY }}
+            apiKey=${{ secrets.API_KEY }}
+            apiSecret=${{ secrets.API_SECRET }}
+            postgresPassword=${{ secrets.POSTGRES_PASSWORD }}
+          failOnStdErr: false
+
+      - name: Display Deployment Outputs
+        run: |
+          echo "========================================"
+          echo "  DEPLOYMENT COMPLETE"
+          echo "========================================"
+          echo "API URL: ${{ steps.deploy.outputs.apiUrl }}"
+          echo "ACR: ${{ steps.deploy.outputs.acrLoginServer }}"
+          echo "PostgreSQL: ${{ steps.deploy.outputs.postgresServerFqdn }}"
+          echo "Cosmos DB: ${{ steps.deploy.outputs.cosmosAccountName }}"
+          echo "Ingestion Job: ${{ steps.deploy.outputs.ingestionJobName }}"
+          echo "========================================"
+
+  build-and-push-images:
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: |
+          az acr login --name ${{ needs.deploy-infrastructure.outputs.acr_name }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push API Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./deploy/Dockerfile
+          push: true
+          tags: ${{ needs.deploy-infrastructure.outputs.acr_login_server }}/alpacamock-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and Push Data Ingestion Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./deploy/Dockerfile.ingestion
+          push: true
+          tags: ${{ needs.deploy-infrastructure.outputs.acr_login_server }}/alpacamock-ingestion:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  initial-setup:
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, build-and-push-images]
+    if: ${{ inputs.run_initial_setup == true }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Add Runner IP to PostgreSQL Firewall
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "Adding firewall rule for IP: ${RUNNER_IP}"
+          az postgres flexible-server firewall-rule create \
+            --resource-group alpacamock-${{ inputs.environment }}-rg \
+            --name ${{ needs.deploy-infrastructure.outputs.postgres_name }} \
+            --rule-name GithubRunner \
+            --start-ip-address $RUNNER_IP \
+            --end-ip-address $RUNNER_IP
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          echo "Waiting for PostgreSQL to be fully ready..."
+          sleep 30
+
+      - name: Initialize Database Schema
+        env:
+          POSTGRES_CONNECTION_STRING: "Host=${{ needs.deploy-infrastructure.outputs.postgres_fqdn }};Database=alpacamock;Username=alpacaadmin;Password=${{ secrets.POSTGRES_PASSWORD }};SSL Mode=Require;Trust Server Certificate=true"
+        run: |
+          dotnet run --project src/AlpacaMock.DataIngestion -- init-db
+
+      - name: Load Symbols from Polygon
+        env:
+          POSTGRES_CONNECTION_STRING: "Host=${{ needs.deploy-infrastructure.outputs.postgres_fqdn }};Database=alpacamock;Username=alpacaadmin;Password=${{ secrets.POSTGRES_PASSWORD }};SSL Mode=Require;Trust Server Certificate=true"
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          dotnet run --project src/AlpacaMock.DataIngestion -- load-symbols
+
+      - name: Load Initial Bar Data
+        if: ${{ inputs.symbols_to_load != '' }}
+        env:
+          POSTGRES_CONNECTION_STRING: "Host=${{ needs.deploy-infrastructure.outputs.postgres_fqdn }};Database=alpacamock;Username=alpacaadmin;Password=${{ secrets.POSTGRES_PASSWORD }};SSL Mode=Require;Trust Server Certificate=true"
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          IFS=',' read -ra SYMBOLS <<< "${{ inputs.symbols_to_load }}"
+          for symbol in "${SYMBOLS[@]}"; do
+            symbol=$(echo "$symbol" | xargs)  # Trim whitespace
+            echo "Loading daily bars for ${symbol}..."
+            dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \
+              -s "${symbol}" \
+              -r daily \
+              --from $(date -d '5 years ago' +%Y-%m-%d) \
+              --to $(date -d 'yesterday' +%Y-%m-%d) || echo "Warning: Failed to load ${symbol}"
+          done
+
+      - name: Show Database Stats
+        env:
+          POSTGRES_CONNECTION_STRING: "Host=${{ needs.deploy-infrastructure.outputs.postgres_fqdn }};Database=alpacamock;Username=alpacaadmin;Password=${{ secrets.POSTGRES_PASSWORD }};SSL Mode=Require;Trust Server Certificate=true"
+        run: |
+          dotnet run --project src/AlpacaMock.DataIngestion -- stats
+
+      - name: Remove Runner IP from PostgreSQL Firewall
+        if: always()
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            --resource-group alpacamock-${{ inputs.environment }}-rg \
+            --name ${{ needs.deploy-infrastructure.outputs.postgres_name }} \
+            --rule-name GithubRunner \
+            --yes || true
+
+  update-container-app:
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, build-and-push-images, initial-setup]
+    if: always() && needs.build-and-push-images.result == 'success'
+
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update Container App with new image
+        run: |
+          az containerapp update \
+            --name alpacamock${{ inputs.environment == 'dev' && 'dev' || '' }}-api \
+            --resource-group alpacamock-${{ inputs.environment }}-rg \
+            --image ${{ needs.deploy-infrastructure.outputs.acr_login_server }}/alpacamock-api:latest
+
+      - name: Verify API Health
+        run: |
+          echo "Waiting for deployment to stabilize..."
+          sleep 30
+
+          API_URL="${{ needs.deploy-infrastructure.outputs.api_url }}"
+          echo "Checking health at ${API_URL}/health"
+
+          for i in {1..5}; do
+            if curl -sf "${API_URL}/health"; then
+              echo ""
+              echo "API is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+
+          echo "::warning::Health check did not pass after 5 attempts"
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [estimate-cost, deploy-infrastructure, build-and-push-images, initial-setup, update-container-app]
+    if: always()
+
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "========================================"
+          echo "  DEPLOYMENT SUMMARY"
+          echo "========================================"
+          echo ""
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Estimated Monthly Cost: \$${{ needs.estimate-cost.outputs.estimated_monthly_cost }} USD"
+          echo ""
+          echo "Infrastructure: ${{ needs.deploy-infrastructure.result }}"
+          echo "Image Build: ${{ needs.build-and-push-images.result }}"
+          echo "Initial Setup: ${{ needs.initial-setup.result || 'skipped' }}"
+          echo "Container Update: ${{ needs.update-container-app.result }}"
+          echo ""
+          if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
+            echo "Resources:"
+            echo "  - API URL: ${{ needs.deploy-infrastructure.outputs.api_url }}"
+            echo "  - ACR: ${{ needs.deploy-infrastructure.outputs.acr_login_server }}"
+            echo "  - PostgreSQL: ${{ needs.deploy-infrastructure.outputs.postgres_fqdn }}"
+          fi
+          echo ""
+          echo "Symbols Loaded: ${{ inputs.symbols_to_load || 'None' }}"
+          echo "========================================"
+
+      - name: Create Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Estimated Cost | \$${{ needs.estimate-cost.outputs.estimated_monthly_cost }}/month |" >> $GITHUB_STEP_SUMMARY
+          echo "| Infrastructure | ${{ needs.deploy-infrastructure.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Images | ${{ needs.build-and-push-images.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Initial Setup | ${{ needs.initial-setup.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.deploy-infrastructure.result }}" == "success" ]; then
+            echo "### Deployed Resources" >> $GITHUB_STEP_SUMMARY
+            echo "- **API URL**: ${{ needs.deploy-infrastructure.outputs.api_url }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **ACR**: ${{ needs.deploy-infrastructure.outputs.acr_login_server }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **PostgreSQL**: ${{ needs.deploy-infrastructure.outputs.postgres_fqdn }}" >> $GITHUB_STEP_SUMMARY
+          fi

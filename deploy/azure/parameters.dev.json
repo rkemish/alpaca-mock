@@ -3,10 +3,13 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "location": {
-      "value": "australiaeast"
+      "value": "eastus"
     },
     "namePrefix": {
-      "value": "alpacamockdev"
+      "value": "alpacamock"
+    },
+    "environment": {
+      "value": "dev"
     },
     "polygonApiKey": {
       "value": ""
@@ -16,6 +19,12 @@
     },
     "apiSecret": {
       "value": "dev-api-secret-change-me"
+    },
+    "postgresPassword": {
+      "value": "DevP@ssw0rd-change-me"
+    },
+    "ingestionCronSchedule": {
+      "value": "0 6 * * *"
     }
   }
 }

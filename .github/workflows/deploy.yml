@@ -19,11 +19,18 @@ on:
           - production
           - development
 
+permissions:
+  id-token: write
+  contents: read
+
 env:
   AZURE_RESOURCE_GROUP: alpacamock-rg
   ACR_NAME: alpacamockacr
   CONTAINER_APP_NAME: alpacamock-api
   IMAGE_NAME: alpacamock-api
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
   build:
@@ -47,7 +54,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Login to ACR
         run: |
@@ -83,7 +92,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy to Container Apps
         run: |
@@ -118,13 +129,15 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create Resource Group
         run: |
           az group create \
             --name ${{ env.AZURE_RESOURCE_GROUP }} \
-            --location australiaeast
+            --location eastus
 
       - name: Deploy Infrastructure
         uses: azure/arm-deploy@v2
@@ -133,6 +146,7 @@ jobs:
           template: ./deploy/azure/main.bicep
           parameters: >
             polygonApiKey=${{ secrets.POLYGON_API_KEY }}
-            apiKey=${{ secrets.ALPACA_API_KEY }}
-            apiSecret=${{ secrets.ALPACA_API_SECRET }}
+            apiKey=${{ secrets.API_KEY }}
+            apiSecret=${{ secrets.API_SECRET }}
+            postgresPassword=${{ secrets.POSTGRES_PASSWORD }}
           failOnStdErr: false
