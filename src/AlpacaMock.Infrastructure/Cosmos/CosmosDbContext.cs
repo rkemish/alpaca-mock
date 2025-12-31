@@ -45,9 +45,28 @@ public class CosmosDbContext : IAsyncDisposable
                 return new HttpClient(handler);
             };
             options.ConnectionMode = ConnectionMode.Gateway;
+            // Prevent SDK from following redirects to localhost (emulator returns localhost in responses)
+            options.LimitToEndpoint = true;
+            // Disable endpoint discovery - use provided endpoint only
+            options.EnableContentResponseOnWrite = false;
         }
 
-        _client = new CosmosClient(connectionString, options);
+        // Parse connection string to extract endpoint and key for explicit construction
+        // This gives better control over endpoint handling for the emulator
+        var parts = connectionString.Split(';')
+            .Select(p => p.Split('=', 2))
+            .Where(p => p.Length == 2)
+            .ToDictionary(p => p[0].Trim(), p => p[1].Trim(), StringComparer.OrdinalIgnoreCase);
+
+        if (parts.TryGetValue("AccountEndpoint", out var endpoint) && parts.TryGetValue("AccountKey", out var key))
+        {
+            _client = new CosmosClient(endpoint, key, options);
+        }
+        else
+        {
+            _client = new CosmosClient(connectionString, options);
+        }
+
         _databaseName = databaseName;
     }
 

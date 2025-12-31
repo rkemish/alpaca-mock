@@ -58,30 +58,20 @@ docker compose -f deploy/docker-compose.yml up -d
 
 echo
 echo -e "${YELLOW}Waiting for services to be healthy...${NC}"
-echo "  (Cosmos DB emulator takes ~60 seconds to initialize)"
 echo
 
 # Wait for services with progress indicator
-MAX_WAIT=180
+MAX_WAIT=60
 WAITED=0
 while [ $WAITED -lt $MAX_WAIT ]; do
-    # Check if all services are healthy
-    UNHEALTHY=$(docker compose -f deploy/docker-compose.yml ps --format json 2>/dev/null | grep -c '"Health":"starting"' || true)
-
-    if [ "$UNHEALTHY" = "0" ]; then
-        # Double-check with actual health endpoints
-        POSTGRES_OK=$(docker compose -f deploy/docker-compose.yml exec -T postgres pg_isready -U postgres 2>/dev/null && echo "yes" || echo "no")
-        COSMOS_OK=$(curl -sf http://localhost:8081/ 2>/dev/null && echo "yes" || echo "no")
-        API_OK=$(curl -sf http://localhost:5050/health 2>/dev/null && echo "yes" || echo "no")
-
-        if [ "$POSTGRES_OK" = "yes" ] && [ "$COSMOS_OK" = "yes" ] && [ "$API_OK" = "yes" ]; then
-            break
-        fi
+    # Check health endpoints
+    if curl -sf http://localhost:5050/health > /dev/null 2>&1; then
+        break
     fi
 
     printf "."
-    sleep 5
-    WAITED=$((WAITED + 5))
+    sleep 3
+    WAITED=$((WAITED + 3))
 done
 echo
 

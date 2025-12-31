@@ -63,9 +63,10 @@ curl -X POST http://localhost:5050/v1/sessions \
 
 The setup script provides:
 - **PostgreSQL + TimescaleDB** - Market data (persisted)
-- **Azure Cosmos DB Emulator** - Session storage (persisted, supports Apple Silicon M1/M2/M3)
 - **AlpacaMock API** - Available at `http://localhost:5050`
 - **FAANG+ Stock Data** - AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA (full year 2024)
+
+**Note:** Session data is stored in-memory locally. Market data persists in PostgreSQL.
 
 ## Documentation
 

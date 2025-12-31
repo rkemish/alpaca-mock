@@ -27,11 +27,13 @@ cp .env.example .env
 ```
 
 This script will:
-1. Start Docker Compose (PostgreSQL, Cosmos DB emulator, API)
+1. Start Docker Compose (PostgreSQL + API)
 2. Wait for all services to be healthy
 3. Load 2024 minute bar data for FAANG+ stocks (AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA)
 
 **Note:** Loading a full year of data takes 30-60 minutes. For faster setup, use the manual method below with a smaller date range.
+
+**Local Storage:** Session data is stored in-memory locally (lost on restart). Market data persists in PostgreSQL.
 
 ---
 
@@ -39,8 +41,7 @@ This script will:
 
 If you prefer more control, you can set up manually. Docker Compose provides:
 - **PostgreSQL + TimescaleDB** - Market data storage (persisted)
-- **Azure Cosmos DB Emulator** - Session storage (persisted, supports Apple Silicon M1/M2/M3)
-- **AlpacaMock API** - The backtesting API
+- **AlpacaMock API** - The backtesting API (session data in-memory)
 
 ### 1. Clone and Start
 
@@ -103,14 +104,12 @@ See the [API Reference](../api/README.md) for complete endpoint documentation.
 
 ## Data Persistence
 
-With Docker Compose, all data persists across restarts:
+| Data | Storage | Persistence |
+|------|---------|-------------|
+| Market bars (OHLCV) | PostgreSQL/TimescaleDB | Persisted in `postgres_data` volume |
+| Sessions, accounts, orders | In-memory | Lost on container restart |
 
-| Data | Storage | Volume |
-|------|---------|--------|
-| Market bars (OHLCV) | PostgreSQL/TimescaleDB | `postgres_data` |
-| Sessions, accounts, orders | Cosmos DB Emulator | `cosmos_data` |
-
-To reset everything:
+To reset market data:
 ```bash
 docker compose -f deploy/docker-compose.yml down -v
 ```
@@ -277,13 +276,6 @@ Verify your Authorization header:
 ```bash
 echo -n "test-api-key:test-api-secret" | base64
 # dGVzdC1hcGkta2V5OnRlc3QtYXBpLXNlY3JldA==
-```
-
-### Cosmos DB emulator not starting
-
-The emulator takes ~60 seconds to initialize. Check logs:
-```bash
-docker logs alpaca-mock-cosmosdb-1
 ```
 
 ### Services not healthy
