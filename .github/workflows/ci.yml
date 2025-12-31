@@ -160,7 +160,7 @@ jobs:
             echo "Running limited tests without market data..."
             newman run postman/AlpacaMock.postman_collection.json \
               -e postman/CI.postman_environment.json \
-              --folder "Workflows/1. Setup Backtest" \
+              --folder "1. Setup Backtest" \
               --reporters cli,htmlextra \
               --reporter-htmlextra-export reports/functional-tests.html
           fi
