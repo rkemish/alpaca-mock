@@ -48,9 +48,8 @@ newman run postman/AlpacaMock.postman_collection.json -e postman/Local.postman_e
   - `OrderValidator` - Alpaca trading rule enforcement
   - `DayTradeTracker` - Pattern Day Trader (PDT) rule tracking
 - **AlpacaMock.Infrastructure** - Database and external API implementations:
-  - `Cosmos/` - Azure Cosmos DB for session state
+  - `Cosmos/` - Azure Cosmos DB for session state (emulator locally, serverless in cloud)
   - `Postgres/` - TimescaleDB for market bar data
-  - `InMemory/` - In-memory storage for local dev (enabled via `USE_INMEMORY_COSMOS=true`)
   - `Polygon/` - Polygon.io API client
 - **AlpacaMock.DataIngestion** - CLI tool for loading historical data from Polygon
 
@@ -85,9 +84,8 @@ Test data builder at `tests/AlpacaMock.Domain.Tests/Fixtures/TestDataBuilder.cs`
 **Docker Compose (default):** Runs PostgreSQL, Cosmos DB emulator, and API with persistent storage.
 
 **Environment variables:**
-- `COSMOS_CONNECTION_STRING` - Azure Cosmos DB connection (emulator or cloud)
+- `COSMOS_CONNECTION_STRING` - Azure Cosmos DB connection (emulator locally, serverless in cloud)
 - `POSTGRES_CONNECTION_STRING` - PostgreSQL/TimescaleDB connection
-- `USE_INMEMORY_COSMOS=true` - Use in-memory storage instead of Cosmos (optional, for quick testing)
 - `ApiKeys__0__Key` / `ApiKeys__0__Secret` - API credentials
 
 **Local Cosmos DB emulator connection string:**

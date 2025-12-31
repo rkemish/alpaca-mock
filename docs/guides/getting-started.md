@@ -92,58 +92,6 @@ docker compose -f deploy/docker-compose.yml down -v
 
 ---
 
-## Manual Setup (Alternative)
-
-If you prefer not to use Docker Compose, you can set up each component manually.
-
-### 1. Start PostgreSQL with TimescaleDB
-
-```bash
-docker run -d \
-  --name alpaca-timescale \
-  -p 5432:5432 \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=alpacamock \
-  timescale/timescaledb:latest-pg15
-```
-
-### 2. Initialize Database Schema
-
-```bash
-dotnet run --project src/AlpacaMock.DataIngestion -- init-db \
-  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres"
-```
-
-### 3. Start Cosmos DB Emulator (Optional)
-
-For persistent session storage on Apple Silicon:
-
-```bash
-docker run -d \
-  --name cosmos-emulator \
-  -p 8081:8081 \
-  -p 1234:1234 \
-  mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
-```
-
-### 4. Run the API
-
-```bash
-# With Cosmos DB emulator
-COSMOS_CONNECTION_STRING="AccountEndpoint=http://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==" \
-POSTGRES_CONNECTION_STRING="Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
-dotnet run --project src/AlpacaMock.Api
-
-# Or with in-memory session storage (data lost on restart)
-USE_INMEMORY_COSMOS=true \
-POSTGRES_CONNECTION_STRING="Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
-dotnet run --project src/AlpacaMock.Api
-```
-
-The API runs on `http://localhost:5000` when started manually.
-
----
-
 ## Loading Market Data
 
 ### Load Symbols Catalog
