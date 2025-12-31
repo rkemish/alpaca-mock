@@ -101,6 +101,7 @@ jobs:
             -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres"
 
       - name: Load test data (minimal)
+        id: load-data
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
         run: |
@@ -113,8 +114,10 @@ jobs:
               --from 2023-01-03 \
               --to 2023-01-10 \
               -r minute
+            echo "data_loaded=true" >> $GITHUB_OUTPUT
           else
-            echo "POLYGON_API_KEY not set, skipping data load"
+            echo "::warning::POLYGON_API_KEY not set - functional tests will run without market data"
+            echo "data_loaded=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Start API server
@@ -145,11 +148,22 @@ jobs:
 
       - name: Run functional tests
         run: |
-          newman run postman/AlpacaMock.postman_collection.json \
-            -e postman/CI.postman_environment.json \
-            --folder "Workflows" \
-            --reporters cli,htmlextra \
-            --reporter-htmlextra-export reports/functional-tests.html
+          if [ "${{ steps.load-data.outputs.data_loaded }}" = "true" ]; then
+            # Full test suite with market data
+            newman run postman/AlpacaMock.postman_collection.json \
+              -e postman/CI.postman_environment.json \
+              --folder "Workflows" \
+              --reporters cli,htmlextra \
+              --reporter-htmlextra-export reports/functional-tests.html
+          else
+            # Limited tests without market data (only session/account creation)
+            echo "Running limited tests without market data..."
+            newman run postman/AlpacaMock.postman_collection.json \
+              -e postman/CI.postman_environment.json \
+              --folder "Workflows/1. Setup Backtest" \
+              --reporters cli,htmlextra \
+              --reporter-htmlextra-export reports/functional-tests.html
+          fi
 
       - name: Upload test report
         uses: actions/upload-artifact@v4
