@@ -7,15 +7,16 @@ services:
       - "5050:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      # For Apple Silicon: Use Azure Cosmos DB free tier or set USE_INMEMORY_COSMOS=true
-      - COSMOS_CONNECTION_STRING=${COSMOS_CONNECTION_STRING:-}
-      - USE_INMEMORY_COSMOS=${USE_INMEMORY_COSMOS:-true}
+      - COSMOS_CONNECTION_STRING=AccountEndpoint=http://cosmosdb:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+      - USE_INMEMORY_COSMOS=false
       - POSTGRES_CONNECTION_STRING=Host=postgres;Database=alpacamock;Username=postgres;Password=postgres
       - ApiKeys__0__Key=test-api-key
       - ApiKeys__0__Secret=test-api-secret
       - ApiKeys__0__Name=Test User
     depends_on:
       postgres:
+        condition: service_healthy
+      cosmosdb:
         condition: service_healthy
     networks:
       - alpacamock-net
@@ -44,20 +45,24 @@ services:
           - postgres
           - db
 
-  # Cosmos DB Emulator (x64 only - works on Intel Macs and Linux)
-  # Uncomment if you're on Intel/AMD architecture
-  # cosmosdb:
-  #   image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
-  #   platform: linux/amd64
-  #   ports:
-  #     - "8081:8081"
-  #     - "10250-10254:10250-10254"
-  #   environment:
-  #     - AZURE_COSMOS_EMULATOR_PARTITION_COUNT=10
-  #     - AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=true
-  #   mem_limit: 3g
-  #   networks:
-  #     - alpacamock-net
+  cosmosdb:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+    hostname: cosmosdb
+    ports:
+      - "8081:8081"
+      - "1234:1234"
+    volumes:
+      - cosmos_data:/data
+    networks:
+      alpacamock-net:
+        aliases:
+          - cosmosdb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/_explorer/emulator.pem || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
 
 networks:
   alpacamock-net:
@@ -65,3 +70,4 @@ networks:
 
 volumes:
   postgres_data:
+  cosmos_data:

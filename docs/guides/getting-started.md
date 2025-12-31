@@ -4,154 +4,191 @@ This guide walks you through setting up AlpacaMock locally and running your firs
 
 ## Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- [Docker](https://www.docker.com/products/docker-desktop) (for local PostgreSQL)
-- [Polygon.io Advanced subscription](https://polygon.io/pricing) (for market data)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) (for local infrastructure)
+- [Polygon.io subscription](https://polygon.io/pricing) (for market data)
 
 ---
 
-## 1. Clone and Build
+## Quick Start with Docker Compose
+
+The fastest way to get started is using Docker Compose, which sets up:
+- **PostgreSQL + TimescaleDB** - Market data storage (persisted)
+- **Azure Cosmos DB Emulator** - Session storage (persisted, supports Apple Silicon M1/M2/M3)
+- **AlpacaMock API** - The backtesting API
+
+### 1. Clone and Start
 
 ```bash
-git clone https://github.com/your-org/alpaca-mock.git
+git clone https://github.com/rkemish/alpaca-mock.git
 cd alpaca-mock
 
-# Restore and build
-dotnet restore
-dotnet build
+# Start all services (first run may take a few minutes to pull images)
+docker-compose -f deploy/docker-compose.yml up -d
+
+# Check services are healthy
+docker-compose -f deploy/docker-compose.yml ps
+```
+
+Wait for all services to show "healthy" status. The Cosmos DB emulator takes ~60 seconds to initialize.
+
+### 2. Load Market Data
+
+You need historical bar data to run backtests:
+
+```bash
+# Load AAPL minute bars for January 2023
+dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \
+  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
+  -k "YOUR_POLYGON_API_KEY" \
+  -s AAPL \
+  --from 2023-01-01 \
+  --to 2023-01-31 \
+  -r minute
+```
+
+### 3. Verify the API
+
+```bash
+curl http://localhost:5050/health
+# {"status":"healthy","timestamp":"..."}
+```
+
+### 4. Run Your First Backtest
+
+```bash
+# Set up authentication
+AUTH="Authorization: Basic dGVzdC1hcGkta2V5OnRlc3QtYXBpLXNlY3JldA=="
+
+# Create a session
+curl -X POST http://localhost:5050/v1/sessions \
+  -H "$AUTH" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "startTime": "2023-01-03T09:30:00Z",
+    "endTime": "2023-01-31T16:00:00Z",
+    "name": "My First Backtest",
+    "initialCash": 100000
+  }'
+```
+
+See the [API Reference](../api/README.md) for complete endpoint documentation.
+
+---
+
+## Data Persistence
+
+With Docker Compose, all data persists across restarts:
+
+| Data | Storage | Volume |
+|------|---------|--------|
+| Market bars (OHLCV) | PostgreSQL/TimescaleDB | `postgres_data` |
+| Sessions, accounts, orders | Cosmos DB Emulator | `cosmos_data` |
+
+To reset everything:
+```bash
+docker-compose -f deploy/docker-compose.yml down -v
 ```
 
 ---
 
-## 2. Start PostgreSQL with TimescaleDB
+## Manual Setup (Alternative)
 
-AlpacaMock stores historical bar data in PostgreSQL with the TimescaleDB extension.
+If you prefer not to use Docker Compose, you can set up each component manually.
+
+### 1. Start PostgreSQL with TimescaleDB
 
 ```bash
-# Start TimescaleDB container
 docker run -d \
   --name alpaca-timescale \
   -p 5432:5432 \
   -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=alpaca_mock \
-  timescale/timescaledb:latest-pg16
-
-# Wait for it to be ready
-docker logs -f alpaca-timescale
-# Look for: "database system is ready to accept connections"
+  -e POSTGRES_DB=alpacamock \
+  timescale/timescaledb:latest-pg15
 ```
 
----
-
-## 3. Initialize the Database
-
-Use the data ingestion tool to create the schema:
+### 2. Initialize Database Schema
 
 ```bash
 dotnet run --project src/AlpacaMock.DataIngestion -- init-db \
-  -c "Host=localhost;Database=alpaca_mock;Username=postgres;Password=postgres"
+  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres"
 ```
 
-Expected output:
-```
-Database initialized successfully.
-Created tables: bars_minute, bars_daily, symbols, data_coverage
-TimescaleDB hypertables configured.
-```
+### 3. Start Cosmos DB Emulator (Optional)
 
----
-
-## 4. Load Market Data
-
-You need historical bar data to run backtests. Load data for the symbols you want to test:
+For persistent session storage on Apple Silicon:
 
 ```bash
-# Set your Polygon API key
-export POLYGON_API_KEY="your-polygon-api-key"
-
-# Load symbols catalog
-dotnet run --project src/AlpacaMock.DataIngestion -- load-symbols \
-  -c "Host=localhost;Database=alpaca_mock;Username=postgres;Password=postgres" \
-  -k $POLYGON_API_KEY
-
-# Load minute bars for a symbol (this may take a while)
-dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \
-  -c "Host=localhost;Database=alpaca_mock;Username=postgres;Password=postgres" \
-  -k $POLYGON_API_KEY \
-  -s AAPL \
-  --from 2023-01-01 \
-  --to 2024-01-01 \
-  -r minute
-
-# Check what data is available
-dotnet run --project src/AlpacaMock.DataIngestion -- stats \
-  -c "Host=localhost;Database=alpaca_mock;Username=postgres;Password=postgres"
+docker run -d \
+  --name cosmos-emulator \
+  -p 8081:8081 \
+  -p 1234:1234 \
+  mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
 ```
 
-**Tip**: Load a few popular symbols first (AAPL, MSFT, GOOGL) to get started quickly.
-
----
-
-## 5. Configure the API
-
-Create a local settings file:
+### 4. Run the API
 
 ```bash
-# Copy example settings
-cp src/AlpacaMock.Api/appsettings.Development.json.example \
-   src/AlpacaMock.Api/appsettings.Development.json
-```
+# With Cosmos DB emulator
+COSMOS_CONNECTION_STRING="AccountEndpoint=http://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==" \
+POSTGRES_CONNECTION_STRING="Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
+dotnet run --project src/AlpacaMock.Api
 
-Edit `appsettings.Development.json`:
-
-```json
-{
-  "ConnectionStrings": {
-    "PostgreSQL": "Host=localhost;Database=alpaca_mock;Username=postgres;Password=postgres",
-    "CosmosDB": "AccountEndpoint=https://localhost:8081/;AccountKey=..."
-  },
-  "Authentication": {
-    "ApiKey": "test-api-key",
-    "ApiSecret": "test-api-secret"
-  }
-}
-```
-
-**For local development without Azure Cosmos DB**, you can use the [Cosmos DB Emulator](https://learn.microsoft.com/en-us/azure/cosmos-db/local-emulator) or configure an in-memory session store.
-
----
-
-## 6. Start the API
-
-```bash
+# Or with in-memory session storage (data lost on restart)
+USE_INMEMORY_COSMOS=true \
+POSTGRES_CONNECTION_STRING="Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
 dotnet run --project src/AlpacaMock.Api
 ```
 
-The API starts on `http://localhost:5000`.
+The API runs on `http://localhost:5000` when started manually.
 
-Verify it's running:
+---
+
+## Loading Market Data
+
+### Load Symbols Catalog
+
 ```bash
-curl http://localhost:5000/health
-# {"status":"Healthy"}
+dotnet run --project src/AlpacaMock.DataIngestion -- load-symbols \
+  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
+  -k "YOUR_POLYGON_API_KEY"
+```
+
+### Load Minute Bars
+
+```bash
+dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \
+  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
+  -k "YOUR_POLYGON_API_KEY" \
+  -s AAPL \
+  --from 2023-01-01 \
+  --to 2023-12-31 \
+  -r minute
+```
+
+### Check Data Coverage
+
+```bash
+dotnet run --project src/AlpacaMock.DataIngestion -- stats \
+  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres"
 ```
 
 ---
 
-## 7. Run Your First Backtest
+## Running a Backtest
 
-Now let's create a session and execute some trades.
+### Authentication
 
-### Set up authentication
+All API requests (except `/health`) require Basic Auth:
 
 ```bash
-# Base64 encoded test-api-key:test-api-secret
 AUTH="Authorization: Basic dGVzdC1hcGkta2V5OnRlc3QtYXBpLXNlY3JldA=="
 ```
 
-### Create a backtest session
+### Create a Session
 
 ```bash
-SESSION=$(curl -s -X POST http://localhost:5000/v1/sessions \
+SESSION=$(curl -s -X POST http://localhost:5050/v1/sessions \
   -H "$AUTH" \
   -H "Content-Type: application/json" \
   -d '{
@@ -164,10 +201,10 @@ SESSION=$(curl -s -X POST http://localhost:5000/v1/sessions \
 echo "Session ID: $SESSION"
 ```
 
-### Create a trading account
+### Create an Account
 
 ```bash
-ACCOUNT=$(curl -s -X POST http://localhost:5000/v1/accounts \
+ACCOUNT=$(curl -s -X POST http://localhost:5050/v1/accounts \
   -H "$AUTH" \
   -H "X-Session-Id: $SESSION" \
   -H "Content-Type: application/json" \
@@ -176,17 +213,10 @@ ACCOUNT=$(curl -s -X POST http://localhost:5000/v1/accounts \
 echo "Account ID: $ACCOUNT"
 ```
 
-### Check current simulation time
+### Place a Market Order
 
 ```bash
-curl -s http://localhost:5000/v1/sessions/$SESSION \
-  -H "$AUTH" | jq '{current_time, playback_state}'
-```
-
-### Place a market order
-
-```bash
-curl -X POST "http://localhost:5000/v1/trading/accounts/$ACCOUNT/orders" \
+curl -X POST "http://localhost:5050/v1/trading/accounts/$ACCOUNT/orders" \
   -H "$AUTH" \
   -H "X-Session-Id: $SESSION" \
   -H "Content-Type: application/json" \
@@ -198,83 +228,44 @@ curl -X POST "http://localhost:5000/v1/trading/accounts/$ACCOUNT/orders" \
   }'
 ```
 
-### Advance time to fill the order
+### Advance Time (Orders Fill on Next Bar)
 
 ```bash
-curl -X POST "http://localhost:5000/v1/sessions/$SESSION/time/advance" \
+curl -X POST "http://localhost:5050/v1/sessions/$SESSION/time/advance" \
   -H "$AUTH" \
   -H "Content-Type: application/json" \
   -d '{"duration": 1}'
 ```
 
-### Check your position
+### Check Position
 
 ```bash
-curl -s "http://localhost:5000/v1/trading/accounts/$ACCOUNT/positions" \
+curl -s "http://localhost:5050/v1/trading/accounts/$ACCOUNT/positions" \
   -H "$AUTH" \
   -H "X-Session-Id: $SESSION" | jq
-```
-
-### Check account balance
-
-```bash
-curl -s "http://localhost:5000/v1/accounts/$ACCOUNT" \
-  -H "$AUTH" \
-  -H "X-Session-Id: $SESSION" | jq '{cash, equity, buying_power}'
 ```
 
 ---
 
-## 8. Trading Strategies
+## Using Postman
 
-Here's a simple example of running a backtest loop:
+Import the Postman collection for easier testing:
 
-```bash
-#!/bin/bash
-AUTH="Authorization: Basic dGVzdC1hcGkta2V5OnRlc3QtYXBpLXNlY3JldA=="
-SESSION="your-session-id"
-ACCOUNT="your-account-id"
+1. Import `postman/AlpacaMock.postman_collection.json`
+2. Import `postman/Local.postman_environment.json`
+3. Select "AlpacaMock - Local" environment
+4. Run the "Workflows" folder
 
-# Advance through the trading day, one minute at a time
-for i in {1..390}; do
-  # Get current price
-  PRICE=$(curl -s "http://localhost:5000/v1/assets/AAPL/quotes/latest" \
-    -H "$AUTH" \
-    -H "X-Session-Id: $SESSION" | jq -r '.quote.bp')
-
-  echo "Minute $i: AAPL bid = $PRICE"
-
-  # Your trading logic here...
-  # Example: Buy if price drops below 150
-  if (( $(echo "$PRICE < 150" | bc -l) )); then
-    curl -s -X POST "http://localhost:5000/v1/trading/accounts/$ACCOUNT/orders" \
-      -H "$AUTH" \
-      -H "X-Session-Id: $SESSION" \
-      -H "Content-Type: application/json" \
-      -d '{"symbol": "AAPL", "side": "buy", "qty": 1, "type": "market"}'
-  fi
-
-  # Advance time by 1 minute
-  curl -s -X POST "http://localhost:5000/v1/sessions/$SESSION/time/advance" \
-    -H "$AUTH" \
-    -H "Content-Type: application/json" \
-    -d '{"duration": 1}'
-done
-
-# Check final results
-curl -s "http://localhost:5000/v1/accounts/$ACCOUNT" \
-  -H "$AUTH" \
-  -H "X-Session-Id: $SESSION" | jq
-```
+See [Functional Tests](../testing/functional-tests.md) for automated testing with Newman.
 
 ---
 
 ## Next Steps
 
 - [Data Ingestion Guide](data-ingestion.md) - Load more historical data
-- [Deployment Guide](deployment.md) - Deploy to Azure
 - [API Reference](../api/README.md) - Complete endpoint documentation
-- [Architecture Overview](../architecture/overview.md) - Understand the system design
+- [Functional Tests](../testing/functional-tests.md) - Automated API testing
+- [Deployment Guide](deployment.md) - Deploy to Azure
 
 ---
 
@@ -282,36 +273,41 @@ curl -s "http://localhost:5000/v1/accounts/$ACCOUNT" \
 
 ### "No bar data found for symbol"
 
-You need to load data for that symbol first:
+Load data for that symbol:
 ```bash
 dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \
-  -c "..." -k "..." -s SYMBOL --from 2023-01-01 --to 2024-01-01 -r minute
+  -c "..." -k "..." -s SYMBOL --from 2023-01-01 --to 2023-12-31 -r minute
 ```
 
 ### "Session not found"
 
-Make sure you're passing the `X-Session-Id` header with a valid session ID.
+Ensure you're passing the `X-Session-Id` header with a valid session ID.
 
 ### "Authentication failed"
 
-Verify your Authorization header is correctly base64-encoded:
+Verify your Authorization header:
 ```bash
 echo -n "test-api-key:test-api-secret" | base64
 # dGVzdC1hcGkta2V5OnRlc3QtYXBpLXNlY3JldA==
 ```
 
-### "Connection refused" on PostgreSQL
+### Cosmos DB emulator not starting
 
-Check that the TimescaleDB container is running:
+The emulator takes ~60 seconds to initialize. Check logs:
 ```bash
-docker ps | grep timescale
-docker logs alpaca-timescale
+docker logs alpaca-mock-cosmosdb-1
 ```
 
-### "Order not filling"
+### Services not healthy
 
-Orders fill on the next bar after they're placed. Make sure to advance time:
+Check all service logs:
 ```bash
-curl -X POST "http://localhost:5000/v1/sessions/$SESSION/time/advance" \
-  -H "$AUTH" -d '{"duration": 1}'
+docker-compose -f deploy/docker-compose.yml logs
+```
+
+### Reset everything
+
+```bash
+docker-compose -f deploy/docker-compose.yml down -v
+docker-compose -f deploy/docker-compose.yml up -d
 ```

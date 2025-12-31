@@ -43,38 +43,37 @@ AlpacaMock implements Alpaca trading rules for realistic backtesting:
 ## Quick Start
 
 ```bash
-# 1. Clone and build
-git clone <repo-url>
+# 1. Clone and start with Docker Compose (includes Cosmos DB emulator for Apple Silicon)
+git clone https://github.com/rkemish/alpaca-mock.git
 cd alpaca-mock
-dotnet build
+docker-compose -f deploy/docker-compose.yml up -d
 
-# 2. Initialize database (requires PostgreSQL + TimescaleDB)
-dotnet run --project src/AlpacaMock.DataIngestion -- init-db \
-  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres"
+# 2. Load historical data from Polygon
+dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \
+  -c "Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
+  -k "YOUR_POLYGON_KEY" -s AAPL --from 2023-01-01 --to 2023-12-31 -r minute
 
-# 3. Load historical data from Polygon
-dotnet run --project src/AlpacaMock.DataIngestion -- load-symbols -c "..." -k "YOUR_POLYGON_KEY"
-dotnet run --project src/AlpacaMock.DataIngestion -- load-bars -c "..." -k "..." -s AAPL
-
-# 4. Run the API
-cd src/AlpacaMock.Api
-COSMOS_CONNECTION_STRING="..." POSTGRES_CONNECTION_STRING="..." dotnet run
-
-# 5. Create a backtest session and trade!
-curl -X POST http://localhost:5000/v1/sessions \
+# 3. Create a backtest session and trade!
+curl -X POST http://localhost:5050/v1/sessions \
   -H "Authorization: Basic dGVzdC1hcGkta2V5OnRlc3QtYXBpLXNlY3JldA==" \
   -H "Content-Type: application/json" \
-  -d '{"startTime": "2023-01-01T09:30:00Z", "endTime": "2023-12-31T16:00:00Z"}'
+  -d '{"startTime": "2023-01-03T09:30:00Z", "endTime": "2023-12-31T16:00:00Z"}'
 ```
+
+Docker Compose provides:
+- **PostgreSQL + TimescaleDB** - Market data (persisted)
+- **Azure Cosmos DB Emulator** - Session storage (persisted, supports Apple Silicon M1/M2/M3)
+- **AlpacaMock API** - Available at `http://localhost:5050`
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Architecture Overview](docs/architecture/overview.md) | System design and component diagram |
 | [Getting Started](docs/guides/getting-started.md) | Setup and first backtest |
 | [API Reference](docs/api/README.md) | Complete endpoint documentation |
 | [Data Ingestion](docs/guides/data-ingestion.md) | Loading historical data from Polygon |
+| [Functional Tests](docs/testing/functional-tests.md) | Postman/Newman API testing |
+| [Architecture Overview](docs/architecture/overview.md) | System design and component diagram |
 | [Components](docs/architecture/components.md) | Deep dive into each component |
 | [Deployment](docs/guides/deployment.md) | Azure deployment guide |
 
@@ -105,8 +104,9 @@ alpaca-mock/
 
 ## Testing
 
-The project includes comprehensive unit tests covering:
+The project includes comprehensive unit tests and functional API tests:
 
+### Unit Tests (94.5% coverage)
 - **Order validation** - Price precision, buying power, extended hours, stop orders
 - **Matching engine** - Market/limit/stop fills, IOC/FOK behavior, slippage, volume limits
 - **Position management** - Average price calculations, P&L tracking, position flipping
@@ -114,12 +114,22 @@ The project includes comprehensive unit tests covering:
 - **Simulation clock** - Time advancement, market hours, playback controls
 
 ```bash
-# Run all tests
+# Run unit tests
 dotnet test
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"
 ```
+
+### Functional Tests (Postman/Newman)
+```bash
+# Run API functional tests
+newman run postman/AlpacaMock.postman_collection.json \
+  -e postman/Local.postman_environment.json \
+  --folder "Workflows"
+```
+
+See [Functional Tests](docs/testing/functional-tests.md) for details.
 
 ## How It Works
 
