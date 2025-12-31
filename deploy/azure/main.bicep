@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 
 @description('Location for all resources')
-param location string = 'eastus'
+param location string = 'australiaeast'
 
 @description('Name prefix for resources')
 param namePrefix string = 'alpacamock'
