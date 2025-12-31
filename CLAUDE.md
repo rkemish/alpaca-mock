@@ -30,7 +30,7 @@ dotnet run --project src/AlpacaMock.DataIngestion -- load-bars -c "..." -k "..."
 dotnet run --project src/AlpacaMock.DataIngestion -- stats -c "..."
 
 # Local development with Docker (includes Cosmos DB emulator for Apple Silicon)
-docker-compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml up -d
 
 # API runs on http://localhost:5050
 # Postman functional tests

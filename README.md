@@ -46,7 +46,7 @@ AlpacaMock implements Alpaca trading rules for realistic backtesting:
 # 1. Clone and start with Docker Compose (includes Cosmos DB emulator for Apple Silicon)
 git clone https://github.com/rkemish/alpaca-mock.git
 cd alpaca-mock
-docker-compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml up -d
 
 # 2. Load historical data from Polygon
 dotnet run --project src/AlpacaMock.DataIngestion -- load-bars \

@@ -27,7 +27,7 @@ AlpacaMock uses **Postman collections** for functional API testing, executed via
 
 ### Prerequisites
 
-- Docker Compose running (`docker-compose -f deploy/docker-compose.yml up`)
+- Docker Compose running (`docker compose -f deploy/docker-compose.yml up -d`)
 - Historical data loaded for test symbols (at minimum: AAPL for January 2023)
 - Newman installed (`npm install -g newman`)
 
@@ -250,8 +250,8 @@ Variables are automatically populated during test execution:
 
 ### 403 Forbidden
 
-- Check `baseUrl` matches running API port (5050 for docker-compose)
-- Verify `apiKey` and `apiSecret` match docker-compose environment
+- Check `baseUrl` matches running API port (5050 for Docker Compose)
+- Verify `apiKey` and `apiSecret` match Docker Compose environment
 
 ### 404 No Quote Data
 

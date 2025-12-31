@@ -24,10 +24,10 @@ git clone https://github.com/rkemish/alpaca-mock.git
 cd alpaca-mock
 
 # Start all services (first run may take a few minutes to pull images)
-docker-compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml up -d
 
 # Check services are healthy
-docker-compose -f deploy/docker-compose.yml ps
+docker compose -f deploy/docker-compose.yml ps
 ```
 
 Wait for all services to show "healthy" status. The Cosmos DB emulator takes ~60 seconds to initialize.
@@ -87,7 +87,7 @@ With Docker Compose, all data persists across restarts:
 
 To reset everything:
 ```bash
-docker-compose -f deploy/docker-compose.yml down -v
+docker compose -f deploy/docker-compose.yml down -v
 ```
 
 ---
@@ -302,12 +302,12 @@ docker logs alpaca-mock-cosmosdb-1
 
 Check all service logs:
 ```bash
-docker-compose -f deploy/docker-compose.yml logs
+docker compose -f deploy/docker-compose.yml logs
 ```
 
 ### Reset everything
 
 ```bash
-docker-compose -f deploy/docker-compose.yml down -v
-docker-compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml down -v
+docker compose -f deploy/docker-compose.yml up -d
 ```
