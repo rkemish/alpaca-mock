@@ -457,4 +457,208 @@ public class MatchingEngineTests
     }
 
     #endregion
+
+    #region ProcessOrders Tests
+
+    [Fact]
+    public void ProcessOrders_SkipsTerminalOrders()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateMarketOrder();
+        order.Status = OrderStatus.Filled;
+        var bars = new Dictionary<string, Bar>
+        {
+            ["AAPL"] = TestDataBuilder.CreateBar()
+        };
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, DateTimeOffset.UtcNow).ToList();
+
+        // Assert
+        fills.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ProcessOrders_IocOrderWithNoBarData_CancelsOrder()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateIocOrder(limitPrice: 150m);
+        var bars = new Dictionary<string, Bar>(); // No bar data for AAPL
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().BeEmpty();
+        order.Status.Should().Be(OrderStatus.Cancelled);
+        order.CancelledAt.Should().Be(currentTime);
+    }
+
+    [Fact]
+    public void ProcessOrders_FokOrderWithNoBarData_RejectsOrder()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateFokOrder(qty: 100, limitPrice: 150m);
+        var bars = new Dictionary<string, Bar>(); // No bar data for AAPL
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().BeEmpty();
+        order.Status.Should().Be(OrderStatus.Rejected);
+        order.FailedAt.Should().Be(currentTime);
+    }
+
+    [Fact]
+    public void ProcessOrders_DayOrderExpired_MarksExpired()
+    {
+        // Arrange - create order submitted yesterday
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test-session",
+            AccountId = "test-account",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Buy,
+            Type = OrderType.Market,
+            TimeInForce = TimeInForce.Day,
+            Status = OrderStatus.Accepted,
+            SubmittedAt = DateTimeOffset.UtcNow.AddDays(-1) // Yesterday
+        };
+        var bars = new Dictionary<string, Bar>
+        {
+            ["AAPL"] = TestDataBuilder.CreateBar()
+        };
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().BeEmpty();
+        order.Status.Should().Be(OrderStatus.Expired);
+        order.ExpiredAt.Should().Be(currentTime);
+    }
+
+    [Fact]
+    public void ProcessOrders_GtcOrderExpired_MarksExpired()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateGtcOrder(submittedAt: DateTimeOffset.UtcNow.AddDays(-91));
+        var bars = new Dictionary<string, Bar>
+        {
+            ["AAPL"] = TestDataBuilder.CreateBar()
+        };
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().BeEmpty();
+        order.Status.Should().Be(OrderStatus.Expired);
+        order.ExpiredAt.Should().Be(currentTime);
+    }
+
+    [Fact]
+    public void ProcessOrders_ValidOrder_ReturnsFill()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateMarketOrder();
+        var bars = new Dictionary<string, Bar>
+        {
+            ["AAPL"] = TestDataBuilder.CreateBar(open: 150m, high: 152m, low: 148m, close: 151m, volume: 1_000_000)
+        };
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().HaveCount(1);
+        fills[0].Order.Should().Be(order);
+        fills[0].Fill.Filled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ProcessOrders_IocOrder_ProcessesWithIocLogic()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateIocOrder(limitPrice: 152m);
+        var bars = new Dictionary<string, Bar>
+        {
+            ["AAPL"] = TestDataBuilder.CreateBar(open: 150m, high: 153m, low: 149m, close: 151m, volume: 1_000_000)
+        };
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().HaveCount(1);
+        fills[0].Fill.Filled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ProcessOrders_FokOrder_ProcessesWithFokLogic()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateFokOrder(qty: 100, limitPrice: 152m);
+        var bars = new Dictionary<string, Bar>
+        {
+            ["AAPL"] = TestDataBuilder.CreateBar(open: 150m, high: 153m, low: 149m, close: 151m, volume: 1_000_000)
+        };
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().HaveCount(1);
+        fills[0].Fill.Filled.Should().BeTrue();
+        fills[0].Fill.IsPartial.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ProcessOrders_OrderDoesNotMeetPriceCondition_NoFill()
+    {
+        // Arrange - limit order that won't fill
+        var order = TestDataBuilder.CreateLimitOrder(side: OrderSide.Buy, limitPrice: 145m);
+        var bars = new Dictionary<string, Bar>
+        {
+            ["AAPL"] = TestDataBuilder.CreateBar(open: 150m, high: 155m, low: 149m, close: 152m)
+        };
+        var currentTime = DateTimeOffset.UtcNow;
+
+        // Act
+        var fills = _engine.ProcessOrders(new[] { order }, bars, currentTime).ToList();
+
+        // Assert
+        fills.Should().BeEmpty();
+    }
+
+    #endregion
+
+    #region Slippage Edge Cases
+
+    [Fact]
+    public void TryFill_ZeroRange_NoSlippageApplied()
+    {
+        // Arrange - flat bar with no price movement
+        var order = TestDataBuilder.CreateMarketOrder(side: OrderSide.Buy);
+        var bar = TestDataBuilder.CreateBar(open: 150m, high: 150m, low: 150m, close: 150m);
+
+        // Act
+        var result = _engine.TryFill(order, bar);
+
+        // Assert
+        result.Filled.Should().BeTrue();
+        result.FillPrice.Should().Be(150m); // No slippage when range is zero
+    }
+
+    #endregion
 }

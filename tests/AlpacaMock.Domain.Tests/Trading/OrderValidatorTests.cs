@@ -389,4 +389,367 @@ public class OrderValidatorTests
     }
 
     #endregion
+
+    #region Time-in-Force Validation Tests
+
+    [Fact]
+    public void ValidateOpgOrder_MarketIsOpen_ReturnsError()
+    {
+        // Arrange - OPG order when market is already open
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Buy,
+            Type = OrderType.Market,
+            TimeInForce = TimeInForce.Opg,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account, isMarketOpen: true);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Field == "time_in_force" && e.Message.Contains("before market open"));
+    }
+
+    [Fact]
+    public void ValidateOpgOrder_MarketIsClosed_ReturnsValid()
+    {
+        // Arrange - OPG order when market is closed
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Buy,
+            Type = OrderType.Market,
+            TimeInForce = TimeInForce.Opg,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account, isMarketOpen: false);
+
+        // Assert
+        result.Errors.Should().NotContain(e => e.Field == "time_in_force" && e.Message.Contains("OPG"));
+    }
+
+    [Fact]
+    public void ValidateClsOrder_MarketIsClosed_ReturnsError()
+    {
+        // Arrange - CLS order when market is closed
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Buy,
+            Type = OrderType.Market,
+            TimeInForce = TimeInForce.Cls,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account, isMarketOpen: false);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Field == "time_in_force" && e.Message.Contains("market hours"));
+    }
+
+    [Fact]
+    public void ValidateClsOrder_MarketIsOpen_ReturnsValid()
+    {
+        // Arrange - CLS order when market is open
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Buy,
+            Type = OrderType.Market,
+            TimeInForce = TimeInForce.Cls,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account, isMarketOpen: true);
+
+        // Assert
+        result.Errors.Should().NotContain(e => e.Field == "time_in_force" && e.Message.Contains("CLS"));
+    }
+
+    #endregion
+
+    #region Trailing Stop Tests
+
+    [Fact]
+    public void ValidateTrailingStopOrder_MissingBothTrailValues_ReturnsError()
+    {
+        // Arrange
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Sell,
+            Type = OrderType.TrailingStop,
+            TrailPrice = null,
+            TrailPercent = null,
+            TimeInForce = TimeInForce.Day,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Field == "trail_price" && e.Message.Contains("trail_price or trail_percent"));
+    }
+
+    [Fact]
+    public void ValidateTrailingStopOrder_HasTrailPrice_ReturnsValid()
+    {
+        // Arrange
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Sell,
+            Type = OrderType.TrailingStop,
+            TrailPrice = 5m,
+            TrailPercent = null,
+            TimeInForce = TimeInForce.Day,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account);
+
+        // Assert
+        result.Errors.Should().NotContain(e => e.Field == "trail_price");
+    }
+
+    [Fact]
+    public void ValidateTrailingStopOrder_HasTrailPercent_ReturnsValid()
+    {
+        // Arrange
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 10,
+            Side = OrderSide.Sell,
+            Type = OrderType.TrailingStop,
+            TrailPrice = null,
+            TrailPercent = 0.05m,
+            TimeInForce = TimeInForce.Day,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account);
+
+        // Assert
+        result.Errors.Should().NotContain(e => e.Field == "trail_price");
+    }
+
+    #endregion
+
+    #region Stop Price Decimal Precision Tests
+
+    [Theory]
+    [InlineData(100.12, true)]      // 2 decimals for $100 - valid
+    [InlineData(100.123, false)]    // 3 decimals for $100 - invalid
+    public void ValidateStopPrice_AboveDollar_EnforcesMaxTwoDecimals(decimal price, bool shouldBeValid)
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateStopOrder(side: OrderSide.Buy, stopPrice: price);
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account, currentPrice: price - 10); // Current below stop
+
+        // Assert
+        if (shouldBeValid)
+        {
+            result.Errors.Should().NotContain(e => e.Field == "stop_price" && e.Message.Contains("decimal"));
+        }
+        else
+        {
+            result.Errors.Should().Contain(e => e.Field == "stop_price" && e.Message.Contains("decimal"));
+        }
+    }
+
+    [Theory]
+    [InlineData(0.5012, true)]      // 4 decimals for $0.50 - valid
+    [InlineData(0.50123, false)]    // 5 decimals for $0.50 - invalid
+    public void ValidateStopPrice_BelowDollar_EnforcesMaxFourDecimals(decimal price, bool shouldBeValid)
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateStopOrder(side: OrderSide.Buy, stopPrice: price);
+        var account = TestDataBuilder.CreateAccount();
+
+        // Act
+        var result = _validator.Validate(order, account, currentPrice: price - 0.1m); // Current below stop
+
+        // Assert
+        if (shouldBeValid)
+        {
+            result.Errors.Should().NotContain(e => e.Field == "stop_price" && e.Message.Contains("decimal"));
+        }
+        else
+        {
+            result.Errors.Should().Contain(e => e.Field == "stop_price" && e.Message.Contains("decimal"));
+        }
+    }
+
+    #endregion
+
+    #region Notional Order Tests
+
+    [Fact]
+    public void ValidateBuyOrder_NotionalOrder_ChecksNotionalValue()
+    {
+        // Arrange - notional order with $15,000 value
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 0, // Notional orders may have 0 qty
+            Notional = 15_000m,
+            Side = OrderSide.Buy,
+            Type = OrderType.Market,
+            TimeInForce = TimeInForce.Day,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount(cash: 10_000m); // Only $10k
+
+        // Act
+        var result = _validator.Validate(order, account, currentPrice: 150m);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Field == "buying_power");
+    }
+
+    [Fact]
+    public void ValidateBuyOrder_NotionalOrder_SufficientBuyingPower_ReturnsValid()
+    {
+        // Arrange - notional order with $5,000 value
+        var order = new Order
+        {
+            Id = Guid.NewGuid().ToString(),
+            SessionId = "test",
+            AccountId = "test",
+            Symbol = "AAPL",
+            Qty = 0,
+            Notional = 5_000m,
+            Side = OrderSide.Buy,
+            Type = OrderType.Market,
+            TimeInForce = TimeInForce.Day,
+            SubmittedAt = DateTimeOffset.UtcNow
+        };
+        var account = TestDataBuilder.CreateAccount(cash: 100_000m);
+
+        // Act
+        var result = _validator.Validate(order, account, currentPrice: 150m);
+
+        // Assert
+        result.Errors.Should().NotContain(e => e.Field == "buying_power");
+    }
+
+    #endregion
+
+    #region Market Order Buying Power Tests
+
+    [Fact]
+    public void ValidateMarketBuyOrder_UsesCurrentPriceForCostEstimate()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateMarketOrder(qty: 100); // 100 shares
+        var account = TestDataBuilder.CreateAccount(cash: 10_000m); // Only $10k
+
+        // Act - current price $150 means order costs $15,000
+        var result = _validator.Validate(order, account, currentPrice: 150m);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Field == "buying_power");
+    }
+
+    [Fact]
+    public void ValidateStopBuyOrder_UsesStopPriceWhenNoCurrentPrice()
+    {
+        // Arrange
+        var order = TestDataBuilder.CreateStopOrder(side: OrderSide.Buy, stopPrice: 150m, qty: 100);
+        var account = TestDataBuilder.CreateAccount(cash: 10_000m); // Only $10k
+
+        // Act - no current price, uses stop price ($150 * 100 = $15,000)
+        var result = _validator.Validate(order, account, currentPrice: null);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Field == "buying_power");
+    }
+
+    #endregion
+
+    #region ValidationResult Static Methods Tests
+
+    [Fact]
+    public void ValidationResult_Valid_ReturnsValidResult()
+    {
+        // Act
+        var result = ValidationResult.Valid();
+
+        // Assert
+        result.IsValid.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidationResult_Invalid_ReturnsInvalidWithErrors()
+    {
+        // Act
+        var result = ValidationResult.Invalid(
+            new ValidationError("field1", "error1"),
+            new ValidationError("field2", "error2"));
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().HaveCount(2);
+        result.Errors.Should().Contain(e => e.Field == "field1");
+        result.Errors.Should().Contain(e => e.Field == "field2");
+    }
+
+    #endregion
 }
