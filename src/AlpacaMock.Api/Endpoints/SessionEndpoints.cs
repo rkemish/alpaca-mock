@@ -57,31 +57,47 @@ public static class SessionEndpoints
     }
 
     private static async Task<IResult> GetSession(
+        HttpContext context,
         string sessionId,
         SessionRepository repo)
     {
+        var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
-        if (session == null)
+
+        // Return 404 for both not found and unauthorized to avoid revealing session existence
+        if (session == null || session.ApiKeyId != apiKeyId)
             return Results.NotFound(new { code = 40410000, message = "Session not found" });
 
         return Results.Ok(MapToResponse(session));
     }
 
     private static async Task<IResult> DeleteSession(
+        HttpContext context,
         string sessionId,
         SessionRepository repo)
     {
+        var apiKeyId = context.GetApiKeyId();
+        var session = await repo.GetByIdAsync(sessionId);
+
+        // Return 404 for both not found and unauthorized to avoid revealing session existence
+        if (session == null || session.ApiKeyId != apiKeyId)
+            return Results.NotFound(new { code = 40410000, message = "Session not found" });
+
         await repo.DeleteAsync(sessionId);
         return Results.NoContent();
     }
 
     private static async Task<IResult> AdvanceTime(
+        HttpContext context,
         string sessionId,
         SessionRepository repo,
         AdvanceTimeRequest request)
     {
+        var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
-        if (session == null)
+
+        // Return 404 for both not found and unauthorized to avoid revealing session existence
+        if (session == null || session.ApiKeyId != apiKeyId)
             return Results.NotFound(new { code = 40410000, message = "Session not found" });
 
         var clock = new SimulationClock(session);
@@ -116,11 +132,15 @@ public static class SessionEndpoints
     }
 
     private static async Task<IResult> PlaySession(
+        HttpContext context,
         string sessionId,
         SessionRepository repo)
     {
+        var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
-        if (session == null)
+
+        // Return 404 for both not found and unauthorized to avoid revealing session existence
+        if (session == null || session.ApiKeyId != apiKeyId)
             return Results.NotFound(new { code = 40410000, message = "Session not found" });
 
         var clock = new SimulationClock(session);
@@ -132,11 +152,15 @@ public static class SessionEndpoints
     }
 
     private static async Task<IResult> PauseSession(
+        HttpContext context,
         string sessionId,
         SessionRepository repo)
     {
+        var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
-        if (session == null)
+
+        // Return 404 for both not found and unauthorized to avoid revealing session existence
+        if (session == null || session.ApiKeyId != apiKeyId)
             return Results.NotFound(new { code = 40410000, message = "Session not found" });
 
         var clock = new SimulationClock(session);
@@ -148,12 +172,16 @@ public static class SessionEndpoints
     }
 
     private static async Task<IResult> SetSpeed(
+        HttpContext context,
         string sessionId,
         SessionRepository repo,
         SetSpeedRequest request)
     {
+        var apiKeyId = context.GetApiKeyId();
         var session = await repo.GetByIdAsync(sessionId);
-        if (session == null)
+
+        // Return 404 for both not found and unauthorized to avoid revealing session existence
+        if (session == null || session.ApiKeyId != apiKeyId)
             return Results.NotFound(new { code = 40410000, message = "Session not found" });
 
         if (request.Speed <= 0)

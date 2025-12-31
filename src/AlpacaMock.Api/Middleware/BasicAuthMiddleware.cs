@@ -1,26 +1,53 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace AlpacaMock.Api.Middleware;
 
 /// <summary>
 /// Basic authentication middleware matching Alpaca's auth pattern.
+/// API keys are loaded from configuration (appsettings.json or environment variables).
 /// </summary>
 public class BasicAuthMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<BasicAuthMiddleware> _logger;
+    private readonly Dictionary<string, (string Secret, string Name)> _apiKeys;
 
-    // For development - in production, these would come from a database
-    private static readonly Dictionary<string, (string Secret, string Name)> ApiKeys = new()
-    {
-        ["test-api-key"] = ("test-api-secret", "Test User"),
-        ["demo-api-key"] = ("demo-api-secret", "Demo User")
-    };
-
-    public BasicAuthMiddleware(RequestDelegate next, ILogger<BasicAuthMiddleware> logger)
+    public BasicAuthMiddleware(RequestDelegate next, ILogger<BasicAuthMiddleware> logger, IConfiguration configuration)
     {
         _next = next;
         _logger = logger;
+        _apiKeys = LoadApiKeys(configuration);
+    }
+
+    /// <summary>
+    /// Loads API keys from configuration.
+    /// Keys can be set via appsettings.json or environment variables (e.g., ApiKeys__0__Key).
+    /// </summary>
+    private static Dictionary<string, (string Secret, string Name)> LoadApiKeys(IConfiguration configuration)
+    {
+        var keys = new Dictionary<string, (string Secret, string Name)>();
+        var section = configuration.GetSection("ApiKeys");
+
+        foreach (var child in section.GetChildren())
+        {
+            var key = child["Key"];
+            var secret = child["Secret"];
+            var name = child["Name"] ?? "API User";
+
+            if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(secret))
+            {
+                keys[key] = (secret, name);
+            }
+        }
+
+        if (keys.Count == 0)
+        {
+            // Log warning if no keys configured
+            Console.WriteLine("WARNING: No API keys configured. Add ApiKeys section to configuration.");
+        }
+
+        return keys;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -63,7 +90,8 @@ public class BasicAuthMiddleware
             var apiKey = parts[0];
             var apiSecret = parts[1];
 
-            if (!ApiKeys.TryGetValue(apiKey, out var keyInfo) || keyInfo.Secret != apiSecret)
+            if (!_apiKeys.TryGetValue(apiKey, out var keyInfo) ||
+                !ConstantTimeEquals(keyInfo.Secret, apiSecret))
             {
                 context.Response.StatusCode = 401;
                 await context.Response.WriteAsJsonAsync(new { code = 40110002, message = "Invalid API credentials" });
@@ -84,6 +112,18 @@ public class BasicAuthMiddleware
             context.Response.StatusCode = 401;
             await context.Response.WriteAsJsonAsync(new { code = 40110003, message = "Authentication failed" });
         }
+    }
+
+    /// <summary>
+    /// Performs constant-time string comparison to prevent timing attacks.
+    /// Uses CryptographicOperations.FixedTimeEquals to ensure comparison time
+    /// doesn't vary based on how many characters match.
+    /// </summary>
+    private static bool ConstantTimeEquals(string a, string b)
+    {
+        var aBytes = Encoding.UTF8.GetBytes(a);
+        var bBytes = Encoding.UTF8.GetBytes(b);
+        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
     }
 }
 
