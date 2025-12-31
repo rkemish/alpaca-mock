@@ -273,52 +273,44 @@ Variables are automatically populated during test execution:
 
 ## CI/CD Integration
 
-### GitHub Actions Example
+The CI workflow (`.github/workflows/ci.yml`) runs functional tests automatically on every push and PR.
 
-```yaml
-functional-tests:
-  runs-on: ubuntu-latest
-  services:
-    postgres:
-      image: timescale/timescaledb:latest-pg15
-      env:
-        POSTGRES_PASSWORD: postgres
-        POSTGRES_DB: alpacamock
-      ports:
-        - 5432:5432
-  steps:
-    - uses: actions/checkout@v4
+### What the CI Does
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.0.x'
+1. **Starts PostgreSQL** as a service container
+2. **Builds the API** from source
+3. **Initializes the database** schema
+4. **Loads test data** (1 week of AAPL bars if POLYGON_API_KEY is set)
+5. **Starts the API** server in background
+6. **Runs Newman** functional tests
+7. **Uploads HTML report** as artifact
 
-    - name: Build and start API
-      run: |
-        dotnet build
-        dotnet run --project src/AlpacaMock.Api &
-        sleep 10
-      env:
-        POSTGRES_CONNECTION_STRING: "Host=localhost;Database=alpacamock;..."
-        USE_INMEMORY_COSMOS: true
+### Required Secrets
 
-    - name: Install Newman
-      run: npm install -g newman newman-reporter-htmlextra
+| Secret | Purpose | Required |
+|--------|---------|----------|
+| `POLYGON_API_KEY` | Load historical data for tests | Optional (tests run with existing data) |
 
-    - name: Run functional tests
-      run: |
-        newman run postman/AlpacaMock.postman_collection.json \
-          -e postman/Local.postman_environment.json \
-          --folder "Workflows" \
-          --reporters cli,htmlextra \
-          --reporter-htmlextra-export reports/functional-tests.html
+### Running Locally Like CI
 
-    - name: Upload test report
-      uses: actions/upload-artifact@v4
-      with:
-        name: functional-test-report
-        path: reports/functional-tests.html
+```bash
+# Start PostgreSQL
+docker run -d --name test-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=alpacamock \
+  -p 5432:5432 \
+  timescale/timescaledb:latest-pg15
+
+# Build and run API
+USE_INMEMORY_COSMOS=true \
+POSTGRES_CONNECTION_STRING="Host=localhost;Database=alpacamock;Username=postgres;Password=postgres" \
+dotnet run --project src/AlpacaMock.Api &
+
+# Run tests
+newman run postman/AlpacaMock.postman_collection.json \
+  -e postman/Local.postman_environment.json \
+  --folder "Workflows" \
+  --env-var "baseUrl=http://localhost:5000"
 ```
 
 ---

@@ -105,6 +105,20 @@ alpaca-mock/
 | Testing | xUnit, FluentAssertions |
 | Deployment | Azure Container Apps |
 
+## CI/CD
+
+[![CI](https://github.com/rkemish/alpaca-mock/actions/workflows/ci.yml/badge.svg)](https://github.com/rkemish/alpaca-mock/actions/workflows/ci.yml)
+
+The project uses GitHub Actions for continuous integration:
+- **Unit tests** with code coverage
+- **Functional tests** using Newman/Postman
+- **Docker image** built and pushed to GHCR on main branch
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/rkemish/alpaca-mock:latest
+```
+
 ## Testing
 
 The project includes comprehensive unit tests and functional API tests:
