@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "australiaeast"
+    },
+    "namePrefix": {
+      "value": "alpacamock"
+    },
+    "polygonApiKey": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.KeyVault/vaults/<keyvault-name>"
+        },
+        "secretName": "polygon-api-key"
+      }
+    },
+    "apiKey": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.KeyVault/vaults/<keyvault-name>"
+        },
+        "secretName": "alpacamock-api-key"
+      }
+    },
+    "apiSecret": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.KeyVault/vaults/<keyvault-name>"
+        },
+        "secretName": "alpacamock-api-secret"
+      }
+    }
+  }
+}
